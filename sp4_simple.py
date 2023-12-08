@@ -116,9 +116,10 @@ def h_eff(m):
 # compute llg step with optional zeeman field
 def llg(m, dt, h_zee=0.0):
     h = h_eff(m) + h_zee
-    dmdt = -gamma / (1 + alpha**2) * np.cross(m, h) - alpha * gamma / (
+    mxh = np.cross(m, h)
+    dmdt = -gamma / (1 + alpha**2) * mxh - alpha * gamma / (
         1 + alpha**2
-    ) * np.cross(m, np.cross(m, h))
+    ) * np.cross(m, mxh)
     m += dt * dmdt
     return m / np.repeat(np.sqrt((m * m).sum(axis=3)), 3).reshape(m.shape)
 
