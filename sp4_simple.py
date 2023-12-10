@@ -23,6 +23,7 @@ import numpy as np
 from numba import jit
 from tqdm import tqdm
 
+DTYPE = np.float32
 # setup mesh and material constants
 n = (100, 25, 1)
 dx = (5e-9, 5e-9, 3e-9)
@@ -36,7 +37,7 @@ alpha = 0.02
 eps = 1e-18
 
 
-@jit(nopython=True)
+@jit(nopython=True, cache=True)
 def f(x, y, z):
     eps = 1e-18
     x, y, z = abs(x), abs(y), abs(z)
@@ -48,7 +49,7 @@ def f(x, y, z):
     )
 
 
-@jit(nopython=True)
+@jit(nopython=True, cache=True)
 def g(x, y, z):
     eps = 1e-18
     z = abs(z)
@@ -88,35 +89,41 @@ def set_n_demag(n, dx, n_demag, c, permute, func):
     return n_demag
 
 
-# compute effective field (demag + exchange)
-def h_eff(m, m_pad, f_n_demag, n, dx):
-    # demag field
-    m_pad[: n[0], : n[1], : n[2], :] = m
-    f_m_pad = np.fft.fftn(m_pad, axes=tuple(filter(lambda i: n[i] > 1, range(3))))
+def compute_hdemag(m_pad: np.ndarray, f_n_demag: np.ndarray, axes: tuple):
+    f_m_pad = np.fft.fftn(m_pad, axes=axes)
     f_h_demag_pad = np.zeros(f_m_pad.shape, dtype=f_m_pad.dtype)
     f_h_demag_pad[:, :, :, 0] = (f_n_demag[:, :, :, (0, 1, 2)] * f_m_pad).sum(axis=3)
     f_h_demag_pad[:, :, :, 1] = (f_n_demag[:, :, :, (1, 3, 4)] * f_m_pad).sum(axis=3)
     f_h_demag_pad[:, :, :, 2] = (f_n_demag[:, :, :, (2, 4, 5)] * f_m_pad).sum(axis=3)
+    return np.fft.ifftn(f_h_demag_pad, axes=axes)[: n[0], : n[1], : n[2], :].real
 
-    h_demag = np.fft.ifftn(
-        f_h_demag_pad, axes=tuple(filter(lambda i: n[i] > 1, range(3)))
-    )[: n[0], : n[1], : n[2], :].real
-    # exchange field
-    h_ex = -2 * m * sum(1 / x**2 for x in dx)
+
+def compute_hex(mu0: float, ms: float, m: np.ndarray, dx: tuple, n: tuple):
+    # h_ex = -2 * m * sum(1 / x**2 for x in dx)
+    h_ex = -2 * m / dx[0] ** 2 - 2 * m / dx[1] ** 2 - 2 * m / dx[2] ** 2
     for i in range(6):
-        h_inter = (
+        h_ex += (
             np.repeat(
                 m,
                 1
                 if n[i % 3] == 1
                 else [(i // 3) * 2] + [1] * (n[i % 3] - 2) + [2 - (i // 3) * 2],
-                axis=i % 3,
+                axis=(i % 3),
             )
             / dx[i % 3] ** 2
         )
-        h_ex += h_inter
 
-    return ms * h_demag + 2 * A / (mu0 * ms) * h_ex
+    return 2 * A / (mu0 * ms) * h_ex
+
+
+# compute effective field (demag + exchange)
+def h_eff(m, m_pad, f_n_demag, n, dx):
+    # demag field
+    axes = tuple(filter(lambda i: n[i] > 1, range(3)))
+    h_demag = compute_hdemag(m_pad, f_n_demag, axes)
+    # exchange field
+    h_ex = compute_hex(mu0, ms, m, dx, n)
+    return ms * h_demag + h_ex
 
 
 # compute llg step with optional zeeman field
@@ -130,6 +137,7 @@ def pure_llg(alpha, gamma, m, dt, h):
 
 
 def llg(m, dt, m_pad, f_n_demag, n, dx, h_zee=0.0):
+    m_pad[: n[0], : n[1], : n[2], :] = m
     h = h_eff(m, m_pad=m_pad, f_n_demag=f_n_demag, n=n, dx=dx) + h_zee
     return pure_llg(alpha, gamma, m, dt, h)
 
@@ -139,7 +147,7 @@ if __name__ == "__main__":
 
     demag_start = time.time()
     # setup demag tensor
-    n_demag = np.zeros([2 * nk - 1 for nk in n] + [6])
+    n_demag = np.zeros([2 * nk - 1 for nk in n] + [6], dtype=DTYPE)
 
     with ProcessPoolExecutor(max_workers=6) as executor:
         futures = []
@@ -157,7 +165,7 @@ if __name__ == "__main__":
                 set_n_demag,
                 n,
                 dx,
-                np.zeros([2 * nk - 1 for nk in n] + [6]),
+                np.zeros([2 * nk - 1 for nk in n] + [6], dtype=DTYPE),
                 i,
                 t[1:],
                 t[0],
@@ -166,13 +174,13 @@ if __name__ == "__main__":
         for future in as_completed(futures):
             n_demag += future.result()
 
-    m_pad = np.zeros([2 * i - 1 for i in n] + [3])
+    m_pad = np.zeros([2 * i - 1 for i in n] + [3], dtype=DTYPE)
     f_n_demag = np.fft.fftn(n_demag, axes=tuple(filter(lambda i: n[i] > 1, range(3))))
     demag_end = time.time()
     print("Demag setup took: ", demag_end - demag_start)
-
+    # quit()
     # initialize magnetization that relaxes into s-state
-    m = np.zeros(n + (3,))
+    m = np.zeros(n + (3,), dtype=DTYPE)
     m[1:-1, :, :, 0] = 1.0
     m[(-1, 0), :, :, 1] = 1.0
 
@@ -180,14 +188,13 @@ if __name__ == "__main__":
     alpha = 1.00
     for _ in tqdm(range(5000), desc="Relaxing"):
         llg(m, 2e-13, m_pad, f_n_demag, n, dx)
-
     # switch
     alpha = 0.02
     dt = 5e-15
     h_zee = np.tile([-24.6e-3 / mu0, +4.3e-3 / mu0, 0.0], np.prod(n)).reshape(m.shape)
-
+    stime = 0.1e-9
     with open("sp4.dat", "w") as f:
-        for i in tqdm(range(int(1e-9 / dt))):
+        for i in tqdm(range(int(stime / dt))):
             f.write(
                 "%f %f %f %f\n"
                 % (
