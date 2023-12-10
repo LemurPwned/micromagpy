@@ -16,12 +16,12 @@
 # along with magnum.fe. If not, see <http://www.gnu.org/licenses/>.
 
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from math import asinh, atan, pi, sqrt
 
 import numpy as np
+from numba import jit
 from tqdm import tqdm
-
-start = time.time()
 
 # setup mesh and material constants
 n = (100, 25, 1)
@@ -36,9 +36,10 @@ alpha = 0.02
 eps = 1e-18
 
 
-# newell f
-def f(p: list):
-    x, y, z = abs(p[0]), abs(p[1]), abs(p[2])
+@jit(nopython=True)
+def f(x, y, z):
+    eps = 1e-18
+    x, y, z = abs(x), abs(y), abs(z)
     return (
         +y / 2.0 * (z**2 - x**2) * asinh(y / (sqrt(x**2 + z**2) + eps))
         + z / 2.0 * (y**2 - x**2) * asinh(z / (sqrt(x**2 + y**2) + eps))
@@ -47,9 +48,10 @@ def f(p: list):
     )
 
 
-# newell g
-def g(p: list):
-    x, y, z = p[0], p[1], abs(p[2])
+@jit(nopython=True)
+def g(x, y, z):
+    eps = 1e-18
+    z = abs(z)
     return (
         +x * y * z * asinh(z / (sqrt(x**2 + y**2) + eps))
         + y / 6.0 * (3.0 * z**2 - y**2) * asinh(x / (sqrt(y**2 + z**2) + eps))
@@ -62,28 +64,32 @@ def g(p: list):
 
 
 # demag tensor setup
-def set_n_demag(c, permute, func):
+def set_n_demag(n, dx, n_demag, c, permute, func):
     it = np.nditer(n_demag[:, :, :, c], flags=["multi_index"], op_flags=["writeonly"])
+    indx_iter = np.rollaxis(np.indices((2,) * 6), 0, 7).reshape(64, 6)
+    dx_prod = np.prod(dx)
     while not it.finished:
         value = 0.0
-        for i in np.rollaxis(np.indices((2,) * 6), 0, 7).reshape(64, 6):
-            idx = list(
+        for i in indx_iter:
+            idx = tuple(
                 map(
                     lambda k: (it.multi_index[k] + n[k] - 1) % (2 * n[k] - 1)
                     - n[k]
-                    + 1,
+                    + 1.0,
                     range(3),
                 )
             )
-            value += (-1) ** sum(i) * func(
-                list(map(lambda j: (idx[j] + i[j] - i[j + 3]) * dx[j], permute))
+            value += (-1.0) ** sum(i) * func(
+                *map(lambda j: (idx[j] + i[j] - i[j + 3]) * dx[j], permute)
             )
-        it[0] = -value / (4 * pi * np.prod(dx))
+
+        it[0] = -value / (4.0 * pi * dx_prod)
         it.iternext()
+    return n_demag
 
 
 # compute effective field (demag + exchange)
-def h_eff(m):
+def h_eff(m, m_pad, f_n_demag, n, dx):
     # demag field
     m_pad[: n[0], : n[1], : n[2], :] = m
     f_m_pad = np.fft.fftn(m_pad, axes=tuple(filter(lambda i: n[i] > 1, range(3))))
@@ -114,50 +120,81 @@ def h_eff(m):
 
 
 # compute llg step with optional zeeman field
-def llg(m, dt, h_zee=0.0):
-    h = h_eff(m) + h_zee
+def pure_llg(alpha, gamma, m, dt, h):
     mxh = np.cross(m, h)
     dmdt = -gamma / (1 + alpha**2) * mxh - alpha * gamma / (
         1 + alpha**2
     ) * np.cross(m, mxh)
     m += dt * dmdt
-    return m / np.repeat(np.sqrt((m * m).sum(axis=3)), 3).reshape(m.shape)
+    return m / np.linalg.norm(m, axis=3, keepdims=True)
 
 
-demag_start = time.time()
-# setup demag tensor
-n_demag = np.zeros([2 * i - 1 for i in n] + [6])
-for i, t in enumerate(
-    ((f, 0, 1, 2), (g, 0, 1, 2), (g, 0, 2, 1), (f, 1, 2, 0), (g, 1, 2, 0), (f, 2, 0, 1))
-):
-    set_n_demag(i, t[1:], t[0])
+def llg(m, dt, m_pad, f_n_demag, n, dx, h_zee=0.0):
+    h = h_eff(m, m_pad=m_pad, f_n_demag=f_n_demag, n=n, dx=dx) + h_zee
+    return pure_llg(alpha, gamma, m, dt, h)
 
-m_pad = np.zeros([2 * i - 1 for i in n] + [3])
-f_n_demag = np.fft.fftn(n_demag, axes=tuple(filter(lambda i: n[i] > 1, range(3))))
-demag_end = time.time()
-print("Demag setup took: ", demag_end - demag_start)
 
-# initialize magnetization that relaxes into s-state
-m = np.zeros(n + (3,))
-m[1:-1, :, :, 0] = 1.0
-m[(-1, 0), :, :, 1] = 1.0
+if __name__ == "__main__":
+    start = time.time()
 
-# relax
-alpha = 1.00
-for _ in tqdm(range(5000), desc="Relaxing"):
-    llg(m, 2e-13)
+    demag_start = time.time()
+    # setup demag tensor
+    n_demag = np.zeros([2 * nk - 1 for nk in n] + [6])
 
-# switch
-alpha = 0.02
-dt = 5e-15
-h_zee = np.tile([-24.6e-3 / mu0, +4.3e-3 / mu0, 0.0], np.prod(n)).reshape(m.shape)
+    with ProcessPoolExecutor(max_workers=6) as executor:
+        futures = []
+        for i, t in enumerate(
+            (
+                (f, 0, 1, 2),
+                (g, 0, 1, 2),
+                (g, 0, 2, 1),
+                (f, 1, 2, 0),
+                (g, 1, 2, 0),
+                (f, 2, 0, 1),
+            )
+        ):
+            future = executor.submit(
+                set_n_demag,
+                n,
+                dx,
+                np.zeros([2 * nk - 1 for nk in n] + [6]),
+                i,
+                t[1:],
+                t[0],
+            )
+            futures.append(future)
+        for future in as_completed(futures):
+            n_demag += future.result()
 
-with open("sp4.dat", "w") as f:
-    for i in tqdm(range(int(1e-9 / dt))):
-        f.write(
-            "%f %f %f %f\n"
-            % ((i * 1e9 * dt,) + tuple(map(lambda i: np.mean(m[:, :, :, i]), range(3))))
-        )
-        llg(m, dt, h_zee)
-end = time.time()
-print("Took: ", end - start)
+    m_pad = np.zeros([2 * i - 1 for i in n] + [3])
+    f_n_demag = np.fft.fftn(n_demag, axes=tuple(filter(lambda i: n[i] > 1, range(3))))
+    demag_end = time.time()
+    print("Demag setup took: ", demag_end - demag_start)
+
+    # initialize magnetization that relaxes into s-state
+    m = np.zeros(n + (3,))
+    m[1:-1, :, :, 0] = 1.0
+    m[(-1, 0), :, :, 1] = 1.0
+
+    # relax
+    alpha = 1.00
+    for _ in tqdm(range(5000), desc="Relaxing"):
+        llg(m, 2e-13, m_pad, f_n_demag, n, dx)
+
+    # switch
+    alpha = 0.02
+    dt = 5e-15
+    h_zee = np.tile([-24.6e-3 / mu0, +4.3e-3 / mu0, 0.0], np.prod(n)).reshape(m.shape)
+
+    with open("sp4.dat", "w") as f:
+        for i in tqdm(range(int(1e-9 / dt))):
+            f.write(
+                "%f %f %f %f\n"
+                % (
+                    (i * 1e9 * dt,)
+                    + tuple(map(lambda i: np.mean(m[:, :, :, i]), range(3)))
+                )
+            )
+            llg(m, dt, m_pad, f_n_demag, n, dx, h_zee=h_zee)
+    end = time.time()
+    print("Took: ", end - start)
