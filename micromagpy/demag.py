@@ -60,7 +60,6 @@ def set_n_demag(n, dx, n_demag, c, permute, func):
 
 def compute_demag_tensor(n: tuple[int], dx: tuple[float]):
     n_demag = np.zeros([2 * nk - 1 for nk in n] + [6], dtype=DTYPE)
-
     with ProcessPoolExecutor(max_workers=6) as executor:
         futures = []
         for i, t in enumerate(

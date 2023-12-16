@@ -1,13 +1,6 @@
 import numpy as np
 
-
-def pure_llg(alpha: float, gamma: float, m: np.ndarray, dt: float, h: np.ndarray):
-    mxh = np.cross(m, h)
-    dmdt = -gamma / (1 + alpha**2) * mxh - alpha * gamma / (
-        1 + alpha**2
-    ) * np.cross(m, mxh)
-    m += dt * dmdt
-    return m / np.linalg.norm(m, axis=3, keepdims=True)
+from .config import GAMMA, MU0
 
 
 def compute_hdemag(
@@ -21,8 +14,16 @@ def compute_hdemag(
     return np.fft.ifftn(f_h_demag_pad, axes=axes)[: n[0], : n[1], : n[2], :].real
 
 
-def compute_hex(A: float, mu0: float, ms: float, m: np.ndarray, dx: tuple, n: tuple):
-    h_ex = -2 * m / dx[0] ** 2 - 2 * m / dx[1] ** 2 - 2 * m / dx[2] ** 2
+def pure_llg(alpha: float, gamma: float, m: np.ndarray, h, dt: float):
+    mxh = np.cross(m, h)
+    pref = gamma / (1 + alpha**2)
+    dmdt = -pref * mxh - alpha * pref * np.cross(m, mxh)
+    m += dt * dmdt
+    return m / np.linalg.norm(m, axis=3, keepdims=True)
+
+
+def compute_hex(A: float, ms: float, m: np.ndarray, dx: tuple, n: tuple):
+    h_ex = -2 * m * sum(1 / x**2 for x in dx)
     for i in range(6):
         h_ex += (
             np.repeat(
@@ -35,13 +36,20 @@ def compute_hex(A: float, mu0: float, ms: float, m: np.ndarray, dx: tuple, n: tu
             / dx[i % 3] ** 2
         )
 
-    return 2 * A / (mu0 * ms) * h_ex
+    return 2 * A / (MU0 * ms) * h_ex
 
 
-def h_eff(mu0, ms, m, m_pad, f_n_demag, n, dx):
+def h_eff(A, ms, m, m_pad, f_n_demag, n, dx):
     # demag field
     axes = tuple(filter(lambda i: n[i] > 1, range(3)))
-    h_demag = compute_hdemag(m_pad, f_n_demag, axes)
+    # demag field
+    h_demag = compute_hdemag(m_pad=m_pad, f_n_demag=f_n_demag, n=n, axes=axes)
     # exchange field
-    h_ex = compute_hex(mu0, ms, m, dx, n)
+    h_ex = compute_hex(A=A, ms=ms, m=m, dx=dx, n=n)
     return ms * h_demag + h_ex
+
+
+def llg(A, alpha, ms, m, dt, m_pad, f_n_demag, n, dx, h_zee=0.0):
+    m_pad[: n[0], : n[1], : n[2], :] = m
+    h = h_eff(A=A, ms=ms, m=m, m_pad=m_pad, f_n_demag=f_n_demag, n=n, dx=dx) + h_zee
+    return pure_llg(alpha=alpha, gamma=GAMMA, m=m.copy(), dt=dt, h=h)
