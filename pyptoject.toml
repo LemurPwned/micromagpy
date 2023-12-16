@@ -1,0 +1,34 @@
+[project]
+name = "micromagpy"
+description = "A tiny micromag simulator based on `70 lines of NumPy...`"
+url = "https://github.com/LemurPwned/micromagpy"
+version = "0.1"
+authors = [
+    { name = "LemurPwned", email = "lemurpwned@gmail.com" }
+]
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+]
+keywords = [
+  "micromagnetics",
+  "simulation",
+]
+dependencies = [
+  "numba >= 0.58.1",
+  "numpy >= 1.26.2"
+]
+
+[project.urls]
+Source = "https://github.com/LemurPwned/micromagpy"
+
+[build-system]
+build-backend = "flit_core.buildapi"
+requires = ["flit_core >=3.2,<4"]
