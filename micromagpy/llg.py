@@ -22,6 +22,25 @@ def pure_llg(alpha: float, gamma: float, m: np.ndarray, h, dt: float):
     return m / np.linalg.norm(m, axis=3, keepdims=True)
 
 
+def pure_llg_torque(
+    alpha: float,
+    gamma: float,
+    m: np.ndarray,
+    h,
+    Hdl: float,
+    Hfl: float,
+    p: list[float],
+    dt: float,
+):
+    mxh = np.cross(m, h)
+    mxp = np.cross(m, p)
+    pref = gamma / (1 + alpha**2)
+    dmdt = -pref * mxh - alpha * pref * np.cross(m, mxh)
+    dtaudt = -pref * Hfl * mxp - alpha * pref * Hdl * np.cross(m, mxp)
+    m += dt * (dmdt + dtaudt)
+    return m / np.linalg.norm(m, axis=3, keepdims=True)
+
+
 def compute_hex(A: float, ms: float, m: np.ndarray, dx: tuple, n: tuple):
     h_ex = -2 * m * sum(1 / x**2 for x in dx)
     for i in range(6):
