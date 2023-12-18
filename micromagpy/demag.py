@@ -58,6 +58,11 @@ def set_n_demag(n, dx, n_demag, c, permute, func):
     return n_demag
 
 
+def compute_trivial_tensor(n: tuple[int]):
+    n_demag = np.zeros([2 * nk - 1 for nk in n] + [6], dtype=DTYPE)
+    return np.fft.fftn(n_demag, axes=tuple(filter(lambda i: n[i] > 1, range(3))))
+
+
 def compute_demag_tensor(n: tuple[int], dx: tuple[float]):
     n_demag = np.zeros([2 * nk - 1 for nk in n] + [6], dtype=DTYPE)
     with ProcessPoolExecutor(max_workers=6) as executor:

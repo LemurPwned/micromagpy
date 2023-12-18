@@ -6,6 +6,10 @@ dist/
 *.egg-info/
 *.egg
 
+# misc media
+*.png
+*.npz
+
 # pyinstaller files
 *.pyc
 *.pyo
