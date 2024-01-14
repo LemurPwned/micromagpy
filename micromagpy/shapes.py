@@ -21,5 +21,8 @@ def circular_mask(x0, y0, r, grid):
     return shape <= r**2
 
 
-def elliptical_mask():
-    ...
+def elliptical_mask(x0, y0, r1, r2, grid):
+    """Generate an elliptical mask."""
+    xx, yy, _, _ = grid
+    shape = (xx - x0) ** 2 / r1**2 + (yy - y0) ** 2 / r2**2
+    return shape <= 1
