@@ -1,3 +1,5 @@
+from math import sqrt
+
 import numpy as np
 
 from .config import GAMMA
@@ -9,6 +11,28 @@ def pure_llg(alpha: float, gamma: float, m: np.ndarray, h, dt: float):
     pref = gamma / (1 + alpha**2)
     dmdt = -pref * mxh - alpha * pref * np.cross(m, mxh)
     m += dt * dmdt
+    return m / np.linalg.norm(m, axis=3, keepdims=True)
+
+
+def ll_operator(alpha: float, gamma: float, m: np.ndarray, h):
+    mxh = np.cross(m, h)
+    pref = gamma / (1 + alpha**2)
+    return -pref * mxh - alpha * pref * np.cross(m, mxh)
+
+
+def euler_heun(
+    alpha: float,
+    gamma: float,
+    m: np.ndarray,
+    h: np.ndarray,
+    h_noise: np.ndarray,
+    dt: float,
+):
+    fn = m + dt * ll_operator(alpha=alpha, gamma=gamma, m=m, h=h)
+    gn = ll_operator(alpha=alpha, gamma=gamma, m=m, h=h_noise)
+    m_next = m + gn * sqrt(dt)
+    gnapprox = ll_operator(alpha=alpha, gamma=gamma, m=m_next, h=h_noise)
+    m = m + fn * dt + 0.5 * (gn + gnapprox) * sqrt(dt)
     return m / np.linalg.norm(m, axis=3, keepdims=True)
 
 
