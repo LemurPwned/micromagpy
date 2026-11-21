@@ -415,21 +415,32 @@ CI runs the suite on Python 3.13 and 3.14
 
 ## Releasing
 
-The version is set in one place, `__version__` in `micromagpy/__init__.py`
-(flit reads it as a dynamic field). Releases go to PyPI from
+Version numbers are never edited by hand. The version comes from the latest git tag
+(`vX.Y.Z`) through [hatch-vcs](https://github.com/ofek/hatch-vcs). An untagged commit
+builds as a development version (`X.Y.Z+1.devN`), and the installed package reports
+it as `micromagpy.__version__`. Releases go to PyPI from
 [`.github/workflows/release.yml`](https://github.com/LemurPwned/micromagpy/blob/master/.github/workflows/release.yml)
 through [Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
 (OIDC), so no API tokens are stored.
 
 To cut a release:
 
-1. Bump `__version__` in `micromagpy/__init__.py` (for example `0.2.1`) and merge the change to `master`.
-2. Create a GitHub release with a tag that matches the version (`v0.2.1`), targeting `master`, and publish it.
-3. The `release` workflow builds the sdist and wheel, runs `twine check`, checks that the tag matches `__version__`, and publishes to PyPI from the `pypi` environment.
+1. Merge to `master`.
+2. Go to *Actions → release → Run workflow* on `master` and pick the bump:
+   `patch` (0.2.0 → 0.2.1), `minor` (0.2.1 → 0.3.0) or `major` (0.3.0 → 1.0.0).
+   Before the first tag the base version is 0.1.0, so the first `minor` release is 0.2.0.
+3. The workflow then:
+   - computes the next version from the latest tag;
+   - creates the tag and a GitHub release with generated notes;
+   - builds the sdist and wheel and runs `twine check`;
+   - checks that the built version matches the tag;
+   - publishes to PyPI from the `pypi` environment.
 
-Pushing a `v*` tag without a release only builds and checks the
-distributions. A manual run (`workflow_dispatch`) with `testpypi` ticked
-publishes to TestPyPI.
+Other ways to run it:
+
+- **Hand-made release:** publishing a GitHub release yourself (tag `vX.Y.Z`) publishes that version.
+- **Tag only:** pushing a `v*` tag without a release just builds and checks.
+- **TestPyPI:** `bump = testpypi-dev` publishes a development version of the current commit to TestPyPI only, without creating a tag.
 
 To build and check locally:
 
