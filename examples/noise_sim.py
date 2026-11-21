@@ -5,7 +5,12 @@ A PMA disk is split into Voronoi grains. Each grain carries an independent
 fluctuators) and an independent 1/f^alpha fluctuation of its anisotropy; a
 white thermal field is added on top. We record the average magnetisation and
 show that below the FMR frequency its spectrum inherits the 1/f^alpha character
-of the sources, on top of the (white) thermal floor.
+of the sources (in-plane components; <mz> is second order in the fluctuations).
+
+With the defaults (T = 0, 20 ns = 200k steps) the fitted exponent of <mx>, <my>
+between 0.2 and 5 GHz is 1.00, and the FMR peak sits at ~20 GHz. At 300 K the
+white thermal field of these small (4x4x2 nm) cells dominates below FMR and
+hides the 1/f part unless the 1/f amplitudes are increased.
 
 Run ``python examples/noise_sim.py --help`` for options.
 """
@@ -32,13 +37,13 @@ from micromagpy.simulation import simulate
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--n", type=int, default=48, help="cells along x and y")
-    parser.add_argument("--steps", type=int, default=40000)
+    parser.add_argument("--steps", type=int, default=200000)
     parser.add_argument("--dt", type=float, default=1e-13)
     parser.add_argument("--alpha-noise", type=float, default=1.0, help="spectral exponent")
     parser.add_argument("--field-noise", type=float, default=2e3, help="rms field noise per grain (A/m)")
     parser.add_argument("--dk-noise", type=float, default=2e4, help="rms anisotropy noise per grain (J/m^3)")
     parser.add_argument("--grains", type=int, default=30)
-    parser.add_argument("--temperature", type=float, default=300.0)
+    parser.add_argument("--temperature", type=float, default=0.0, help="K; adds a white thermal field")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out", default="noise_psd.png")
     args = parser.parse_args()
