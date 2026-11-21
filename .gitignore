@@ -22,3 +22,7 @@ dist/
 TIMES.md
 *.html
 *.json
+
+# curated example outputs are committed (figures + timings)
+!examples/curated/figures/*.png
+!examples/curated/figures/timings.json

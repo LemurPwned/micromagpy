@@ -199,6 +199,31 @@ def stochastic_heun(
     return normalize(m + 0.5 * dt * (k1 + k2))
 
 
+def rk4(alpha: float, gamma: float, m: np.ndarray, field_fn, t: float, dt: float) -> np.ndarray:
+    """Classical Runge-Kutta step for the deterministic LLG equation.
+
+    :param field_fn: ``field_fn(m, t)`` -> total field (A/m).
+
+    Explicit Euler (and, more weakly, Heun) amplify undamped precession by
+    ~(omega dt)^2 / 2 per step, which for low damping and small cells (high
+    exchange spin-wave frequencies) exceeds the damping and blows up. RK4 is
+    stable up to omega dt ~ 2.8. Not suitable for white (thermal) noise.
+    """
+    m = np.ascontiguousarray(m, dtype=DTYPE)
+    pref = gamma / (1 + alpha**2)
+
+    def rhs(mm, tt):
+        out = np.empty_like(m)
+        _ll_rhs(mm, _as_field(field_fn(mm, tt), m.shape), pref, alpha, out)
+        return out
+
+    k1 = rhs(m, t)
+    k2 = rhs(m + 0.5 * dt * k1, t + 0.5 * dt)
+    k3 = rhs(m + 0.5 * dt * k2, t + 0.5 * dt)
+    k4 = rhs(m + dt * k3, t + dt)
+    return normalize(m + dt / 6.0 * (k1 + 2 * k2 + 2 * k3 + k4))
+
+
 def llg(
     A, alpha, ms, m, dt, m_pad, f_n_demag, n, dx, h_zee=0.0, K=0.0, kaxis=(0, 0, 1)
 ):

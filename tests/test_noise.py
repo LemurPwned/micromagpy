@@ -171,3 +171,27 @@ def test_simulate_with_coloured_noise_runs_and_is_finite():
     r = simulate(m, dx, 8e5, 1.3e-11, 0.1, 1e-13, 50, K=5e5, noise=noise)
     assert np.all(np.isfinite(r["m"]))
     np.testing.assert_allclose(np.linalg.norm(r["m"], axis=-1), 1.0)
+
+
+def test_rk4_is_stable_where_euler_blows_up():
+    # 4 nm cells, low damping: Euler amplifies exchange spin waves, RK4 does not
+    n, dx, ms = (8, 8, 1), (4e-9, 4e-9, 1e-9), 8.2e5
+    m = np.zeros(n + (3,))
+    m[..., 2] = 1.0
+    tilt = np.deg2rad(1.0)
+    h = 7e5 * np.array([np.sin(tilt), 0, np.cos(tilt)])
+    kw = dict(K=489e3, h_ext=h, demag=True, record_every=100)
+    rng = np.random.default_rng(0)
+    m += 0.01 * rng.normal(size=m.shape)
+    euler = simulate(m, dx, ms, 1.3e-11, 0.01, 1e-13, 3000, solver="euler", **kw)
+    rk = simulate(m, dx, ms, 1.3e-11, 0.01, 1e-13, 3000, solver="rk4", **kw)
+    assert rk["m_avg"][-1, 2] > 0.99
+    assert euler["m_avg"][-1, 2] < 0.9
+
+
+def test_rk4_rejects_thermal_noise():
+    n, dx = (2, 2, 1), (5e-9,) * 3
+    m = np.zeros(n + (3,))
+    m[..., 2] = 1
+    with pytest.raises(ValueError):
+        simulate(m, dx, 8e5, 0, 0.1, 1e-13, 1, noise=[ThermalField(n, dx, 8e5, 0.1, 300, 1e-13)], solver="rk4")

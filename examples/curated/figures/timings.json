@@ -1,0 +1,48 @@
+{
+  "fmr_basic": {
+    "fields": 41,
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "rk45_steps_total": 327954,
+    "samples_per_field": 4000,
+    "seconds": 207.25,
+    "solver": "relax + rk45"
+  },
+  "noise_spectra": {
+    "generators": 6,
+    "rates_Msamples_per_s": {
+      "Kasdin buffered, $\\alpha$=1": 8.31,
+      "OU sum, $\\alpha$=0.5": 2.79,
+      "OU sum, $\\alpha$=1": 2.81,
+      "OU sum, $\\alpha$=1.5": 2.72,
+      "OneF (cmtj), 20 sources": 1.12,
+      "VectorAlpha x-comp, $\\alpha$=1": 3.16
+    },
+    "samples": 1048576,
+    "seconds": 2.53
+  },
+  "noise_spectrogram": {
+    "fields": 11,
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "seconds": 848.83,
+    "solver": "heun",
+    "steps_per_field": 320000
+  },
+  "seeded_noise_demo": {
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "seconds": 3.39,
+    "solver": "heun",
+    "steps": 15000
+  }
+}

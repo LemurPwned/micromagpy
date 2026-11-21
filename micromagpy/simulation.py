@@ -9,7 +9,9 @@ import numpy as np
 from .config import DTYPE, GAMMA
 from .demag import compute_demag_tensor, compute_trivial_tensor
 from .fields import h_eff
-from .llg import normalize, pure_llg, stochastic_heun
+from .llg import normalize, pure_llg, rk4, stochastic_heun
+from .noise import ThermalField
+from .solvers import RK45State, integrate_rk45, llg_rhs_factory
 
 
 def simulate(
@@ -29,6 +31,7 @@ def simulate(
     record_every: int = 1,
     callback: Optional[Callable] = None,
     progress: bool = False,
+    tol: float = 1e-6,
 ):
     """Integrate the (stochastic) LLG equation.
 
@@ -42,7 +45,10 @@ def simulate(
         per step and their field is re-evaluated at the Heun predictor; any
         other source is called as ``source(t)`` once per step and its field
         held fixed (e.g. thermal or coloured field noise).
-    :param solver: ``"heun"`` (2 field evaluations, Stratonovich) or ``"euler"``.
+    :param solver: ``"heun"`` (2 field evaluations, Stratonovich; use with
+        thermal noise), ``"rk4"`` (4 evaluations, deterministic or coloured
+        noise only, most stable) or ``"euler"`` (1 evaluation; unstable for low
+        damping and small cells, see :func:`micromagpy.llg.rk4`).
     :param callback: ``callback(i, t, m)`` called every ``record_every`` steps.
     :return: dict with ``t`` (s), ``m_avg`` (recorded averages) and ``m`` (final).
     """
@@ -57,6 +63,10 @@ def simulate(
     else:
         f_n_demag = demag
 
+    if solver not in ("heun", "rk4", "rk45", "euler"):
+        raise ValueError("solver must be 'heun', 'rk4', 'rk45' or 'euler'")
+    if solver in ("rk4", "rk45") and any(isinstance(s, ThermalField) for s in noise):
+        raise ValueError("Use solver='heun' with thermal (white) noise")
     m_dependent = [s for s in noise if hasattr(s, "field") and hasattr(s, "tick")]
     fixed_sources = [s for s in noise if s not in m_dependent]
 
@@ -75,6 +85,7 @@ def simulate(
         except ImportError:  # pragma: no cover
             pass
 
+    rk_state = RK45State(dt=dt)
     times, m_avg = [], []
     for i in iterator:
         t = i * dt
@@ -85,13 +96,28 @@ def simulate(
                 callback(i, t, m)
         for src in m_dependent:
             src.tick()
-        h_fixed = np.asarray(h_ext(t) if callable(h_ext) else h_ext, dtype=DTYPE)
+        h_noise = 0.0
         for src in fixed_sources:
-            h_fixed = h_fixed + src(t)
+            h_noise = h_noise + src(t)
+        if solver in ("rk4", "rk45"):
+            # external field evaluated at the RK stages, noise held over the step
+            def total(mm, tt, h_noise=h_noise):
+                h = deterministic(mm) + np.asarray(h_ext(tt) if callable(h_ext) else h_ext, dtype=DTYPE)
+                return h + h_noise
+
+            if solver == "rk4":
+                m = rk4(alpha, GAMMA, m, total, t, dt)
+            else:
+                rk_state.k1 = None  # the field function changes every interval
+                m = integrate_rk45(llg_rhs_factory(alpha, GAMMA, total), m, t, t + dt, rk_state, tol)
+            continue
+        h_fixed = np.asarray(h_ext(t) if callable(h_ext) else h_ext, dtype=DTYPE) + h_noise
         if solver == "heun":
             m = stochastic_heun(alpha, GAMMA, m, deterministic, h_fixed, dt)
         elif solver == "euler":
             m = pure_llg(alpha, GAMMA, m, deterministic(m) + h_fixed, dt)
-        else:
-            raise ValueError("solver must be 'heun' or 'euler'")
-    return {"t": np.asarray(times), "m_avg": np.asarray(m_avg), "m": m}
+    out = {"t": np.asarray(times), "m_avg": np.asarray(m_avg), "m": m}
+    if solver == "rk45":
+        out["rk45_steps"] = rk_state.accepted
+        out["rk45_rejected"] = rk_state.rejected
+    return out
