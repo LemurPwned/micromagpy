@@ -29,6 +29,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest"]
+jax = ["jax >= 0.4.20"]
 
 [project.urls]
 Source = "https://github.com/LemurPwned/micromagpy"
