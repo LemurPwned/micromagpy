@@ -38,7 +38,7 @@ if __name__ == "__main__":
 
     demag_start = time.time()
 
-    m_pad = np.zeros([2 * i - 1 for i in n] + [3], dtype=DTYPE)
+    m_pad = None  # padding is handled internally by the FFT
     f_n_demag = compute_demag_tensor(n=n, dx=dx)
 
     demag_end = time.time()
@@ -51,7 +51,7 @@ if __name__ == "__main__":
     # relax
     alpha = 1.00
     for _ in tqdm(range(5000), desc="Relaxing"):
-        llg(
+        m = llg(
             A=A,
             ms=ms,
             alpha=alpha,
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     alpha = 0.02
     dt = 5e-15
     h_zee = np.tile([-24.6e-3 / mu0, +4.3e-3 / mu0, 0.0], np.prod(n)).reshape(m.shape)
-    stime = 0.1e-9
+    stime = 1e-9
     with open("sp4.dat", "w") as f:
         for i in tqdm(range(int(stime / dt))):
             f.write(
@@ -76,12 +76,12 @@ if __name__ == "__main__":
                     + tuple(map(lambda i: np.mean(m[:, :, :, i]), range(3)))
                 )
             )
-            llg(
+            m = llg(
                 A=A,
                 ms=ms,
                 alpha=alpha,
                 m=m,
-                dt=2e-13,
+                dt=dt,
                 m_pad=m_pad,
                 f_n_demag=f_n_demag,
                 n=n,
@@ -90,3 +90,22 @@ if __name__ == "__main__":
             )
     end = time.time()
     print("Took: ", end - start)
+
+    try:  # plot next to the benchmark figures
+        import os
+
+        import matplotlib.pyplot as plt
+
+        d = np.loadtxt("sp4.dat")
+        os.makedirs("benchmarks/figures", exist_ok=True)
+        fig, ax = plt.subplots(figsize=(6, 3.6))
+        for c, lab in zip((1, 2, 3), ("<mx>", "<my>", "<mz>")):
+            ax.plot(d[:, 0], d[:, c], label=lab)
+        ax.set_xlabel("t (ns)")
+        ax.set_ylabel("average m")
+        ax.set_title(f"muMAG standard problem 4, field 1 ({end - start:.0f} s total)")
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig("benchmarks/figures/sp4.png", dpi=200)
+    except ImportError:
+        pass

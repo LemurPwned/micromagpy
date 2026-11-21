@@ -1,0 +1,190 @@
+{
+  "domain_noise_gif_ima_T300": {
+    "domains": 4,
+    "frames": 100,
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "seconds": 15.16,
+    "sigma": 0.5
+  },
+  "domain_noise_gif_ima_T50": {
+    "domains": 4,
+    "frames": 100,
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "seconds": 12.06,
+    "sigma": 0.5
+  },
+  "domain_noise_gif_mixed_T300": {
+    "domains": 4,
+    "frames": 100,
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "seconds": 14.84,
+    "sigma": 0.5
+  },
+  "domain_noise_gif_mixed_T50": {
+    "domains": 4,
+    "frames": 100,
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "seconds": 11.9,
+    "sigma": 0.5
+  },
+  "domain_noise_gif_pma_T300": {
+    "domains": 4,
+    "frames": 100,
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "seconds": 15.5,
+    "sigma": 0.5
+  },
+  "domain_noise_gif_pma_T50": {
+    "domains": 4,
+    "frames": 100,
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "seconds": 12.23,
+    "sigma": 0.5
+  },
+  "domain_noise_sweep_ima_T300": {
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "runs": 36,
+    "seconds": 609.32,
+    "seeds": 3,
+    "solver": "relax + heun",
+    "temperature_K": 300.0,
+    "time_per_run_ns": 6.0
+  },
+  "domain_noise_sweep_ima_T50": {
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "runs": 36,
+    "seconds": 583.12,
+    "seeds": 3,
+    "solver": "relax + heun",
+    "temperature_K": 50.0,
+    "time_per_run_ns": 6.0
+  },
+  "domain_noise_sweep_pma_T300": {
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "runs": 36,
+    "seconds": 604.71,
+    "seeds": 3,
+    "solver": "relax + heun",
+    "temperature_K": 300.0,
+    "time_per_run_ns": 6.0
+  },
+  "domain_noise_sweep_pma_T50": {
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "runs": 36,
+    "seconds": 596.08,
+    "seeds": 3,
+    "solver": "relax + heun",
+    "temperature_K": 50.0,
+    "time_per_run_ns": 6.0
+  },
+  "fmr_basic": {
+    "fields": 41,
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "rk45_steps_total": 327954,
+    "samples_per_field": 4000,
+    "seconds": 213.38,
+    "solver": "relax + rk45"
+  },
+  "noise_spectra": {
+    "generators": 6,
+    "rates_Msamples_per_s": {
+      "Kasdin buffered, $\\alpha$=1": 8.31,
+      "OU sum, $\\alpha$=0.5": 2.79,
+      "OU sum, $\\alpha$=1": 2.81,
+      "OU sum, $\\alpha$=1.5": 2.72,
+      "OneF (cmtj), 20 sources": 1.12,
+      "VectorAlpha x-comp, $\\alpha$=1": 3.16
+    },
+    "samples": 1048576,
+    "seconds": 2.53
+  },
+  "noise_spectrogram": {
+    "fields": 11,
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "seconds": 857.07,
+    "solver": "heun",
+    "steps_per_field": 320000
+  },
+  "seeded_noise_demo": {
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "seconds": 3.39,
+    "solver": "heun",
+    "steps": 15000
+  },
+  "sot_switching": {
+    "loops": 3,
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "points_per_loop": 40,
+    "rk45_steps_total": 292580,
+    "seconds": 286.65,
+    "solver": "rk45 pulse + relax"
+  },
+  "sto": {
+    "currents": 8,
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "rk45_steps_total": 95992,
+    "seconds": 96.09,
+    "solver": "rk45",
+    "time_per_current_ns": 6.0
+  }
+}

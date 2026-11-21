@@ -1,34 +1,79 @@
+[build-system]
+# The version comes from the latest git tag (vX.Y.Z) via hatch-vcs, so it never
+# has to be edited by hand; see "Releasing" in the README.
+requires = ["hatchling >= 1.33.0", "hatch-vcs >= 0.5.0"]
+build-backend = "hatchling.build"
+
 [project]
 name = "micromagpy"
-description = "A tiny micromag simulator based on `70 lines of NumPy...`"
-url = "https://github.com/LemurPwned/micromagpy"
-version = "0.1"
+description = "A small finite-difference micromagnetic simulator built on NumPy, numba and SciPy."
+dynamic = ["version"]
 authors = [
     { name = "LemurPwned", email = "lemurpwned@gmail.com" }
 ]
 readme = "README.md"
-requires-python = ">=3.8"
+license = "LGPL-3.0-or-later"
+license-files = ["LICENSE", "COPYING.LESSER", "CREDITS.md"]
+requires-python = ">=3.13"
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "License :: OSI Approved :: MIT License",
+    "Intended Audience :: Science/Research",
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Physics",
 ]
 keywords = [
   "micromagnetics",
   "simulation",
+  "LLG",
+  "spintronics",
+  "1/f noise",
 ]
 dependencies = [
-  "numba >= 0.58.1",
-  "numpy >= 1.26.2"
+  "numba >= 0.68.1",
+  "numpy >= 2.5.5",
+  "scipy >= 1.18.1",
+]
+
+[project.optional-dependencies]
+test = ["pytest >= 9.2.0"]
+examples = [
+  "matplotlib >= 3.11.2",
+  "tqdm >= 4.70.1",
+  "pillow >= 13.0.0",
 ]
 
 [project.urls]
 Source = "https://github.com/LemurPwned/micromagpy"
+Issues = "https://github.com/LemurPwned/micromagpy/issues"
 
-[build-system]
-build-backend = "flit_core.buildapi"
-requires = ["flit_core >=3.2,<4"]
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+# PyPI rejects local versions (+g<hash>); untagged commits become X.Y.Z.devN
+local_scheme = "no-local-version"
+# before the first release tag (the last hand-set version was 0.1)
+fallback_version = "0.1.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["micromagpy"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/micromagpy", "/tests", "/README.md", "/LICENSE", "/COPYING.LESSER", "/CREDITS.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 120
+target-version = ["py313"]
+
+[tool.isort]
+profile = "black"
+line_length = 120

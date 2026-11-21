@@ -22,3 +22,11 @@ dist/
 TIMES.md
 *.html
 *.json
+
+# curated example outputs are committed (figures + timings)
+!examples/curated/results/*.png
+!examples/curated/results/timings.json
+!examples/curated/results/*.gif
+# benchmark outputs are committed
+!benchmarks/figures/*.png
+!benchmarks/figures/*.json

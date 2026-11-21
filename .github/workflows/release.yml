@@ -1,0 +1,169 @@
+name: release
+
+# Versions come from git tags (hatch-vcs): nobody edits a version number.
+#
+# * Actions -> release -> Run workflow, bump = patch | minor | major
+#     computes the next version from the latest vX.Y.Z tag, creates the tag and
+#     a GitHub release (with generated notes), builds and publishes to PyPI.
+#   bump = testpypi-dev
+#     builds an X.Y.Z.devN version of the current commit and publishes it to
+#     TestPyPI only (no tag, no release).
+# * A GitHub release published by hand (tag vX.Y.Z) -> build and publish to PyPI.
+# * A pushed v* tag -> build and check only (dry run).
+#
+# Publishing uses PyPI Trusted Publishing (OIDC): no API tokens are stored.
+# A release created by this workflow (GITHUB_TOKEN) does not trigger the
+# "release: published" event again, so nothing is published twice.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump (from the latest vX.Y.Z tag)"
+        type: choice
+        options: [patch, minor, major, testpypi-dev]
+        default: patch
+  release:
+    types: [published]
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Tag and create the GitHub release
+    if: github.event_name == 'workflow_dispatch' && inputs.bump != 'testpypi-dev'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the tag and the release
+    outputs:
+      tag: ${{ steps.next.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Compute the next version
+        id: next
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          latest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)
+          latest=${latest:-v0.1.0}  # last hand-set version before automatic versioning
+          IFS=. read -r major minor patch <<< "${latest#v}"
+          case "$BUMP" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+          esac
+          tag="v${major}.${minor}.${patch}"
+          if git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+            echo "::error::Tag $tag already exists"
+            exit 1
+          fi
+          echo "Latest tag: $latest -> new tag: $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Create the tag and the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.next.outputs.tag }}
+        run: |
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --generate-notes
+
+  build:
+    name: Build distributions
+    needs: version
+    # run after a successful "version" job, or when it was skipped (other triggers)
+    if: ${{ !cancelled() && (needs.version.result == 'success' || needs.version.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # the new tag when this run created one, otherwise the triggering ref
+          ref: ${{ needs.version.outputs.tag || github.ref }}
+          fetch-depth: 0 # hatch-vcs needs the tags to compute the version
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade build twine
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Check distributions
+        run: python -m twine check --strict dist/*
+
+      - name: Check the version matches the tag
+        if: needs.version.outputs.tag != '' || github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
+        env:
+          TAG: ${{ needs.version.outputs.tag || github.event.release.tag_name || github.ref_name }}
+        run: |
+          wheel=$(ls dist/*.whl)
+          version=$(basename "$wheel" | cut -d- -f2)
+          echo "Built version $version for tag $TAG"
+          if [ "${TAG#v}" != "$version" ]; then
+            echo "::error::Built version $version does not match tag $TAG"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: python-package-distributions
+          path: dist/
+          if-no-files-found: error
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    if: ${{ !cancelled() && needs.build.result == 'success' && (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.bump != 'testpypi-dev')) }}
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/micromagpy
+    permissions:
+      id-token: write # required for Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    if: ${{ !cancelled() && needs.build.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.bump == 'testpypi-dev' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/micromagpy
+    permissions:
+      id-token: write # required for Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
