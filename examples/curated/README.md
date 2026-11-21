@@ -2,7 +2,7 @@
 
 Micromagnetic counterparts of the [cmtj curated examples](https://github.com/LemurPwned/cmtj/tree/master/curated-examples),
 focused on noise and spectra. Run from this directory, e.g. `python fmr_basic.py`.
-Figures are written to `results/`, wall times to `results/timings.json`.
+Figures, GIFs and a short write-up for every example are in [`results/`](results/README.md); wall times in `results/timings.json`.
 
 | example | cmtj counterpart | what it shows |
 | --- | --- | --- |
@@ -14,18 +14,7 @@ Figures are written to `results/`, wall times to `results/timings.json`.
 | `domain_noise.py` | (new) | thermal <m> noise of an element made of N bars with dispersed PMA / IMA anisotropy (magnitude and axis, sigma); spectra vs N and sigma, GIFs of m_x, m_y, m_z |
 | `noise_spectrogram.py` | (new) | spectra driven only by thermal + 1/f grain noise vs field (stochastic Heun); the thermal FMR line follows Kittel, the 1/f band (fit α = 1.02 at H = 0) is pushed under the thermal floor as the field stiffens m |
 
-![noise spectra](results/noise-spectra.png)
-![seeded noise](results/seeded-noise-demo.png)
-![fmr](results/fmr-basic.png)
-![noise spectrogram](results/noise-spectrogram.png)
-![sto](results/sto.png)
-![sot switching](results/sot-switching.png)
-![domain noise PMA](results/domain-noise-pma.png)
-![domain noise IMA](results/domain-noise-ima.png)
-
-| PMA bars | IMA bars | mixed PMA / IMA bars |
-| --- | --- | --- |
-| ![](results/domain-noise-pma.gif) | ![](results/domain-noise-ima.gif) | ![](results/domain-noise-mixed.gif) |
+See [`results/README.md`](results/README.md) for all figures and animations.
 
 ## Timings
 
