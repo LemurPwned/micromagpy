@@ -58,6 +58,19 @@
     "temperature_K": 300.0,
     "time_per_run_ns": 6.0
   },
+  "domain_noise_sweep_pma_T50": {
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "runs": 36,
+    "seconds": 596.08,
+    "seeds": 3,
+    "solver": "relax + heun",
+    "temperature_K": 50.0,
+    "time_per_run_ns": 6.0
+  },
   "fmr_basic": {
     "fields": 41,
     "mesh": [
