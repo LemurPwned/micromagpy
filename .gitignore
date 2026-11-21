@@ -22,3 +22,7 @@ dist/
 TIMES.md
 *.html
 *.json
+
+# benchmark outputs are committed
+!benchmarks/figures/*.png
+!benchmarks/figures/*.json
