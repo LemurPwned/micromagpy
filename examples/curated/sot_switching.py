@@ -31,8 +31,10 @@ HDL_PER_J = HBAR * theta_sh / (2 * ELECTRON_CHARGE * MU0 * ms * dx[2])
 
 
 def loop(f_demag, hx, fl_ratio, hdl_max, points, pulse):
-    branch = np.linspace(0, hdl_max, points // 4 + 1)
-    sweep = np.concatenate([branch, np.linspace(hdl_max, -hdl_max, points // 2 + 1)[1:], -branch[::-1][1:]])
+    # 0 -> +max (initialise), then a closed loop +max -> -max -> +max
+    init = np.linspace(0, hdl_max, points // 4 + 1)
+    down = np.linspace(hdl_max, -hdl_max, points // 2 + 1)
+    sweep = np.concatenate([init, down[1:], down[::-1][1:]])
     m = np.zeros(n + (3,))
     m[..., 2] = 1.0
     h_bias = np.array([hx, 0.0, 0.0])
@@ -47,7 +49,7 @@ def loop(f_demag, hx, fl_ratio, hdl_max, points, pulse):
         steps += res["rk45_steps"]
         m = relax(res["m"], dx, ms, A=A, K=K, h_ext=h_bias, demag=f_demag)["m"]
         mz.append(m[..., 2].mean())
-    return sweep, np.array(mz), steps
+    return sweep, np.array(mz), steps, len(init)
 
 
 def main():
@@ -62,20 +64,21 @@ def main():
     with timed("sot_switching", mesh=list(n), loops=len(cases), points_per_loop=args.points, solver="rk45 pulse + relax") as info:
         total = 0
         for hx, fl in cases:
-            hdl, mz, steps = loop(f_demag, hx, fl, args.hdl_max, args.points, args.pulse)
+            hdl, mz, steps, n_init = loop(f_demag, hx, fl, args.hdl_max, args.points, args.pulse)
             total += steps
-            results.append((hx, fl, hdl, mz))
-            sw = hdl[np.where(np.diff(np.sign(mz)) != 0)[0]]
+            results.append((hx, fl, hdl, mz, n_init))
+            sw = hdl[np.where(np.diff(np.sign(mz)) != 0)[0] + 1]
             print(f"Hx = {hx:+.0e} A/m, Hfl/Hdl = {fl}: switching at Hdl = {np.round(sw / 1e3, 1)} kA/m")
         info["rk45_steps_total"] = total
 
     Hk_eff = 2 * K / (MU0 * ms) - ms
     fig, axes = plt.subplots(1, len(cases), figsize=(4.3 * len(cases), 3.8), sharey=True)
-    for ax, (hx, fl, hdl, mz) in zip(axes, results):
+    for ax, (hx, fl, hdl, mz, n_init) in zip(axes, results):
         j = hdl / HDL_PER_J
-        half = len(hdl) // 2
-        ax.plot(j[: half + 1] / 1e12, mz[: half + 1], "o-", ms=3, color="crimson", label="up / first branch")
-        ax.plot(j[half:] / 1e12, mz[half:], "s-", ms=3, color="navy", label="return branch")
+        k = n_init - 1  # start of the loop at +max
+        half = k + (len(hdl) - k) // 2
+        ax.plot(j[k : half + 1] / 1e12, mz[k : half + 1], "o-", ms=3, color="crimson", label="+j -> -j")
+        ax.plot(j[half:] / 1e12, mz[half:], "s-", ms=3, color="navy", label="-j -> +j")
         ax.axhline(0, color="gray", lw=0.5)
         ax.set_xlabel(r"j ($10^{12}$ A/m$^2$)")
         title = f"$H_x$ = {hx / 1e3:+.0f} kA/m"

@@ -1,4 +1,63 @@
 {
+  "domain_noise_gif_ima": {
+    "domains": 4,
+    "frames": 100,
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "seconds": 4.94,
+    "sigma": 0.5
+  },
+  "domain_noise_gif_mixed": {
+    "domains": 4,
+    "frames": 100,
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "seconds": 5.48,
+    "sigma": 0.5
+  },
+  "domain_noise_gif_pma": {
+    "domains": 4,
+    "frames": 100,
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "seconds": 5.46,
+    "sigma": 0.5
+  },
+  "domain_noise_sweep_ima": {
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "runs": 36,
+    "seconds": 609.32,
+    "seeds": 3,
+    "solver": "relax + heun",
+    "temperature_K": 300.0,
+    "time_per_run_ns": 6.0
+  },
+  "domain_noise_sweep_pma": {
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "runs": 36,
+    "seconds": 604.71,
+    "seeds": 3,
+    "solver": "relax + heun",
+    "temperature_K": 300.0,
+    "time_per_run_ns": 6.0
+  },
   "fmr_basic": {
     "fields": 41,
     "mesh": [
@@ -44,5 +103,29 @@
     "seconds": 3.39,
     "solver": "heun",
     "steps": 15000
+  },
+  "sot_switching": {
+    "loops": 3,
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "points_per_loop": 40,
+    "rk45_steps_total": 292580,
+    "seconds": 286.65,
+    "solver": "rk45 pulse + relax"
+  },
+  "sto": {
+    "currents": 8,
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "rk45_steps_total": 95992,
+    "seconds": 96.09,
+    "solver": "rk45",
+    "time_per_current_ns": 6.0
   }
 }
