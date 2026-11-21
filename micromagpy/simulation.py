@@ -9,7 +9,7 @@ import numpy as np
 from .config import DTYPE, GAMMA
 from .demag import compute_demag_tensor, compute_trivial_tensor
 from .fields import h_eff
-from .llg import normalize, pure_llg, rk4, stochastic_heun
+from .llg import ll_operator, normalize, rk4, stochastic_heun
 from .noise import ThermalField
 from .solvers import RK45State, integrate_rk45, llg_rhs_factory
 
@@ -32,6 +32,7 @@ def simulate(
     callback: Optional[Callable] = None,
     progress: bool = False,
     tol: float = 1e-6,
+    torques: Sequence = (),
 ):
     """Integrate the (stochastic) LLG equation.
 
@@ -49,6 +50,8 @@ def simulate(
         thermal noise), ``"rk4"`` (4 evaluations, deterministic or coloured
         noise only, most stable) or ``"euler"`` (1 evaluation; unstable for low
         damping and small cells, see :func:`micromagpy.llg.rk4`).
+    :param torques: SOT / STT terms (:mod:`micromagpy.torques`), evaluated at
+        every stage of every solver; amplitudes may be time dependent.
     :param callback: ``callback(i, t, m)`` called every ``record_every`` steps.
     :return: dict with ``t`` (s), ``m_avg`` (recorded averages) and ``m`` (final).
     """
@@ -86,6 +89,14 @@ def simulate(
             pass
 
     rk_state = RK45State(dt=dt)
+    extra = None
+    if torques:
+
+        def extra(mm, tt, out):
+            for tq in torques:
+                tq.add_rhs(mm, tt, alpha, GAMMA, out)
+            return out
+
     times, m_avg = [], []
     for i in iterator:
         t = i * dt
@@ -106,16 +117,21 @@ def simulate(
                 return h + h_noise
 
             if solver == "rk4":
-                m = rk4(alpha, GAMMA, m, total, t, dt)
+                m = rk4(alpha, GAMMA, m, total, t, dt, extra_rhs=extra)
             else:
                 rk_state.k1 = None  # the field function changes every interval
-                m = integrate_rk45(llg_rhs_factory(alpha, GAMMA, total), m, t, t + dt, rk_state, tol)
+                rhs = llg_rhs_factory(alpha, GAMMA, total, extra_rhs=extra)
+                m = integrate_rk45(rhs, m, t, t + dt, rk_state, tol)
             continue
         h_fixed = np.asarray(h_ext(t) if callable(h_ext) else h_ext, dtype=DTYPE) + h_noise
         if solver == "heun":
-            m = stochastic_heun(alpha, GAMMA, m, deterministic, h_fixed, dt)
+            heun_extra = None if extra is None else (lambda mm, out, t=t: extra(mm, t, out))
+            m = stochastic_heun(alpha, GAMMA, m, deterministic, h_fixed, dt, extra_rhs=heun_extra)
         elif solver == "euler":
-            m = pure_llg(alpha, GAMMA, m, deterministic(m) + h_fixed, dt)
+            dm = ll_operator(alpha, GAMMA, m, deterministic(m) + h_fixed)
+            if extra is not None:
+                extra(m, t, dm)
+            m = normalize(m + dt * dm)
     out = {"t": np.asarray(times), "m_avg": np.asarray(m_avg), "m": m}
     if solver == "rk45":
         out["rk45_steps"] = rk_state.accepted

@@ -67,13 +67,18 @@ def _max_cell_norm(x):
     return np.sqrt(best)
 
 
-def llg_rhs_factory(alpha: float, gamma: float, field_fn):
-    """``rhs(m, t)`` of the LLG equation for ``field_fn(m, t)`` (A/m)."""
+def llg_rhs_factory(alpha: float, gamma: float, field_fn, extra_rhs=None):
+    """``rhs(m, t)`` of the LLG equation for ``field_fn(m, t)`` (A/m).
+
+    ``extra_rhs(m, t, out)`` may add further terms (SOT / STT) in place.
+    """
     pref = gamma / (1 + alpha**2)
 
     def rhs(m, t):
         out = np.empty_like(m)
         _ll_rhs(m, _as_field(field_fn(m, t), m.shape), pref, alpha, out)
+        if extra_rhs is not None:
+            extra_rhs(m, t, out)
         return out
 
     return rhs

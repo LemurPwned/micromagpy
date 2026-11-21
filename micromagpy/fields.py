@@ -20,10 +20,31 @@ def _unit_axis(axis) -> np.ndarray:
     return u / norm
 
 
+def anisotropy_arrays(ms, K, kaxis, n):
+    """Per-cell ``Hk = 2K/(mu0 Ms)`` of shape ``n`` and unit axes ``n + (3,)``.
+
+    ``K`` may be a scalar or an array of shape ``n``; ``kaxis`` a 3-vector or
+    an array of shape ``n + (3,)`` (normalised per cell; zero vectors allowed
+    where ``K == 0``). Scalars are broadcast without copying.
+    """
+    n = tuple(int(k) for k in n)
+    hk = np.asarray(K, dtype=DTYPE) * (2.0 / (MU0 * ms))
+    hk = np.broadcast_to(hk, n)
+    u = np.asarray(kaxis, dtype=DTYPE)
+    if u.shape == (3,):
+        u = np.broadcast_to(_unit_axis(u) if np.any(u) else u, n + (3,))
+    else:
+        u = np.broadcast_to(u, n + (3,))
+        norm = np.linalg.norm(u, axis=-1, keepdims=True)
+        u = np.divide(u, norm, out=np.zeros(n + (3,), dtype=DTYPE), where=norm > 0)
+    return hk, u
+
+
 @njit(parallel=True, cache=True)
 def _exchange_anisotropy_kernel(m, hd, scale_d, out, cex, idx2, hk, u, add_hd):
     """out = [scale_d * hd] + cex * laplacian(m) + hk * (m . u) u.
 
+    ``hk`` has shape n and ``u`` shape n + (3,) (per-cell uniaxial anisotropy).
     Neumann (edge-replicated) boundaries; ``hd`` is only read if ``add_hd``.
     """
     nx, ny, nz, _ = m.shape
@@ -36,7 +57,8 @@ def _exchange_anisotropy_kernel(m, hd, scale_d, out, cex, idx2, hk, u, add_hd):
             for k in range(nz):
                 km = k - 1 if k > 0 else 0
                 kp = k + 1 if k < nz - 1 else nz - 1
-                mu = m[i, j, k, 0] * u[0] + m[i, j, k, 1] * u[1] + m[i, j, k, 2] * u[2]
+                ux, uy, uz = u[i, j, k, 0], u[i, j, k, 1], u[i, j, k, 2]
+                hmu = hk[i, j, k] * (m[i, j, k, 0] * ux + m[i, j, k, 1] * uy + m[i, j, k, 2] * uz)
                 for c in range(3):
                     mc = m[i, j, k, c]
                     lap = (
@@ -44,17 +66,16 @@ def _exchange_anisotropy_kernel(m, hd, scale_d, out, cex, idx2, hk, u, add_hd):
                         + (m[i, jp, k, c] + m[i, jm, k, c] - 2.0 * mc) * idx2[1]
                         + (m[i, j, kp, c] + m[i, j, km, c] - 2.0 * mc) * idx2[2]
                     )
-                    val = cex * lap + hk * mu * u[c]
+                    val = cex * lap + hmu * u[i, j, k, c]
                     if add_hd:
                         val += scale_d * hd[i, j, k, c]
                     out[i, j, k, c] = val
 
 
-def compute_anisotropy_field(ms: float, K: float, m: np.ndarray, axis) -> np.ndarray:
-    """Uniaxial anisotropy field ``2K/(mu0 Ms) (m . u) u``."""
-    u = _unit_axis(axis)
-    Hk = (2 * K) / (MU0 * ms)
-    return Hk * np.einsum("...c,c->...", m, u)[..., None] * u
+def compute_anisotropy_field(ms: float, K, m: np.ndarray, axis) -> np.ndarray:
+    """Uniaxial anisotropy field ``2K/(mu0 Ms) (m . u) u`` (K, axis scalar/vector or per cell)."""
+    hk, u = anisotropy_arrays(ms, K, axis, m.shape[:3])
+    return (hk * np.einsum("...c,...c->...", m, u))[..., None] * u
 
 
 def compute_hex(
@@ -64,9 +85,8 @@ def compute_hex(
     m = np.ascontiguousarray(m, dtype=DTYPE)
     out = np.empty_like(m)
     idx2 = np.array([1.0 / d**2 for d in dx], dtype=DTYPE)
-    _exchange_anisotropy_kernel(
-        m, m, 0.0, out, 2 * A / (MU0 * ms), idx2, 0.0, np.zeros(3, dtype=DTYPE), False
-    )
+    hk, u = anisotropy_arrays(ms, 0.0, np.zeros(3), m.shape[:3])
+    _exchange_anisotropy_kernel(m, m, 0.0, out, 2 * A / (MU0 * ms), idx2, hk, u, False)
     return out
 
 
@@ -122,14 +142,16 @@ def compute_hdemag(
 
 
 def h_eff(A, ms, K, kaxis, m, m_pad, f_n_demag, n, dx):
-    """Demag + exchange + uniaxial anisotropy field (A/m)."""
+    """Demag + exchange + uniaxial anisotropy field (A/m).
+
+    ``K`` / ``kaxis`` may be per cell (shapes ``n`` / ``n + (3,)``), e.g. for
+    grains or domains with different anisotropy, see :func:`anisotropy_arrays`.
+    """
     n = tuple(int(k) for k in n)
     m = np.ascontiguousarray(m, dtype=DTYPE)
     hd = compute_hdemag(m_pad=m, f_n_demag=f_n_demag, n=n)
     h = np.empty_like(m)
     idx2 = np.array([1.0 / d**2 for d in dx], dtype=DTYPE)
-    u = _unit_axis(kaxis) if K != 0 else np.zeros(3, dtype=DTYPE)
-    _exchange_anisotropy_kernel(
-        m, hd, float(ms), h, 2 * A / (MU0 * ms), idx2, (2 * K) / (MU0 * ms), u, True
-    )
+    hk, u = anisotropy_arrays(ms, K, kaxis, n)
+    _exchange_anisotropy_kernel(m, hd, float(ms), h, 2 * A / (MU0 * ms), idx2, hk, u, True)
     return h

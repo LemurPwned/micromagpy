@@ -146,3 +146,15 @@ def test_torque_reduces_to_llg():
         pure_llg_torque(0.1, GAMMA, m, h, 0.0, 0.0, (1, 0, 0), 1e-13),
         pure_llg(0.1, GAMMA, m, h, 1e-13),
     )
+
+
+def test_per_cell_anisotropy():
+    n = (4, 3, 1)
+    m = random_m(n, 5)
+    K = np.linspace(1e4, 5e5, np.prod(n)).reshape(n)
+    axes = random_m(n, 6)
+    h = compute_anisotropy_field(8e5, K, m, axes)
+    expected = (2 * K / (MU0 * 8e5) * np.sum(m * axes, axis=-1))[..., None] * axes
+    np.testing.assert_allclose(h, expected, rtol=1e-12)
+    f = compute_trivial_tensor(n)
+    np.testing.assert_allclose(h_eff(0.0, 8e5, K, axes, m, None, f, n, (5e-9,) * 3), expected, rtol=1e-12)

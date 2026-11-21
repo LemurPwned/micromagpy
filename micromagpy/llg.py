@@ -36,9 +36,10 @@ def _ll_rhs(m, h, pref, alpha, out):
 
 @njit(parallel=True, cache=True)
 def _llg_torque_euler(m, h, pref, alpha, hfl, hdl, p, dt, out):
-    """Explicit Euler step of LLG + field-/damping-like SOT, followed by renorm.
+    """Explicit Euler step of LLG + torque ``afl m x p + adl m x (m x p)``, then renorm.
 
-    Cells with ``|m| == 0`` (non magnetic) are left untouched.
+    ``hfl`` / ``hdl`` here are the combined coefficients ``a_fl`` / ``a_dl``
+    (see :mod:`micromagpy.torques`). Cells with ``|m| == 0`` are left untouched.
     """
     nx, ny, nz, _ = m.shape
     px, py, pz = p[0], p[1], p[2]
@@ -61,13 +62,13 @@ def _llg_torque_euler(m, h, pref, alpha, hfl, hdl, p, dt, out):
                 ry = mz * qx - mx * qz
                 rz = mx * qy - my * qx
                 nmx = mx + dt * (
-                    -pref * (cx + alpha * ddx) - pref * (hfl * qx + alpha * hdl * rx)
+                    -pref * (cx + alpha * ddx) - pref * (hfl * qx + hdl * rx)
                 )
                 nmy = my + dt * (
-                    -pref * (cy + alpha * ddy) - pref * (hfl * qy + alpha * hdl * ry)
+                    -pref * (cy + alpha * ddy) - pref * (hfl * qy + hdl * ry)
                 )
                 nmz = mz + dt * (
-                    -pref * (cz + alpha * ddz) - pref * (hfl * qz + alpha * hdl * rz)
+                    -pref * (cz + alpha * ddz) - pref * (hfl * qz + hdl * rz)
                 )
                 norm = sqrt(nmx * nmx + nmy * nmy + nmz * nmz)
                 if norm > 0.0:
@@ -140,12 +141,17 @@ def pure_llg(alpha: float, gamma: float, m: np.ndarray, h, dt: float) -> np.ndar
 def pure_llg_torque(
     alpha: float, gamma: float, m: np.ndarray, h, Hdl: float, Hfl: float, p, dt: float
 ) -> np.ndarray:
-    """Explicit Euler step of LLG with field-like and damping-like torques."""
+    """Explicit Euler step of LLG with field-like and damping-like SOT (A/m).
+
+    Same convention as cmtj (and :class:`micromagpy.torques.SOT`):
+    ``-gamma' [(Hfl - alpha Hdl) m x p + (Hdl + alpha Hfl) m x (m x p)]``.
+    """
     m = np.ascontiguousarray(m, dtype=DTYPE)
     out = np.empty_like(m)
     p = np.asarray(p, dtype=DTYPE).reshape(3)
+    afl, adl = Hfl - alpha * Hdl, Hdl + alpha * Hfl
     _llg_torque_euler(
-        m, _as_field(h, m.shape), gamma / (1 + alpha**2), alpha, Hfl, Hdl, p, dt, out
+        m, _as_field(h, m.shape), gamma / (1 + alpha**2), alpha, afl, adl, p, dt, out
     )
     return out
 
@@ -172,7 +178,13 @@ def euler_heun(
 
 
 def stochastic_heun(
-    alpha: float, gamma: float, m: np.ndarray, field_fn, h_fixed, dt: float
+    alpha: float,
+    gamma: float,
+    m: np.ndarray,
+    field_fn,
+    h_fixed,
+    dt: float,
+    extra_rhs=None,
 ) -> np.ndarray:
     """Heun (predictor-corrector) step, the standard Stratonovich scheme for sLLG.
 
@@ -181,6 +193,8 @@ def stochastic_heun(
     :param h_fixed: field held constant during the step (A/m): external
         field, thermal field (already ~ 1/sqrt(dt)), coloured noise, ...
         May be ``None`` or a scalar ``0``.
+    :param extra_rhs: optional ``extra_rhs(m, out)`` adding further dm/dt
+        terms (e.g. SOT / STT torques) in place.
     """
     m = np.ascontiguousarray(m, dtype=DTYPE)
     pref = gamma / (1 + alpha**2)
@@ -193,16 +207,23 @@ def stochastic_heun(
 
     k1 = np.empty_like(m)
     _ll_rhs(m, total(m), pref, alpha, k1)
+    if extra_rhs is not None:
+        extra_rhs(m, k1)
     m_pred = normalize(m + dt * k1)
     k2 = np.empty_like(m)
     _ll_rhs(m_pred, total(m_pred), pref, alpha, k2)
+    if extra_rhs is not None:
+        extra_rhs(m_pred, k2)
     return normalize(m + 0.5 * dt * (k1 + k2))
 
 
-def rk4(alpha: float, gamma: float, m: np.ndarray, field_fn, t: float, dt: float) -> np.ndarray:
+def rk4(
+    alpha: float, gamma: float, m: np.ndarray, field_fn, t: float, dt: float, extra_rhs=None
+) -> np.ndarray:
     """Classical Runge-Kutta step for the deterministic LLG equation.
 
     :param field_fn: ``field_fn(m, t)`` -> total field (A/m).
+    :param extra_rhs: optional ``extra_rhs(m, t, out)`` adding dm/dt terms in place.
 
     Explicit Euler (and, more weakly, Heun) amplify undamped precession by
     ~(omega dt)^2 / 2 per step, which for low damping and small cells (high
@@ -215,6 +236,8 @@ def rk4(alpha: float, gamma: float, m: np.ndarray, field_fn, t: float, dt: float
     def rhs(mm, tt):
         out = np.empty_like(m)
         _ll_rhs(mm, _as_field(field_fn(mm, tt), m.shape), pref, alpha, out)
+        if extra_rhs is not None:
+            extra_rhs(mm, tt, out)
         return out
 
     k1 = rhs(m, t)

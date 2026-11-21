@@ -15,7 +15,7 @@ import numpy as np
 
 from .config import DTYPE, GAMMA, MU0
 from .demag import compute_demag_tensor, compute_trivial_tensor
-from .fields import _unit_axis, compute_hdemag, compute_hex, h_eff
+from .fields import anisotropy_arrays, compute_hdemag, compute_hex, h_eff
 from .llg import normalize
 from .solvers import RK45State, _max_cell_norm, damping_rhs_factory, rk45_step
 
@@ -37,7 +37,8 @@ def energies(m, dx, ms, A=0.0, K=0.0, kaxis=(0, 0, 1), h_ext=0.0, demag=True) ->
     e = {}
     e["exchange"] = -0.5 * MU0 * ms * V * float(np.sum(m * compute_hex(A, ms, m, dx, n))) if A else 0.0
     e["demag"] = -0.5 * MU0 * ms * V * float(np.sum(m * ms * compute_hdemag(m, f_n, n)))
-    e["anisotropy"] = -K * V * float(np.sum((m @ _unit_axis(kaxis)) ** 2)) if K else 0.0
+    hk, u = anisotropy_arrays(ms, K, kaxis, n)
+    e["anisotropy"] = -0.5 * MU0 * ms * V * float(np.sum(hk * np.einsum("...c,...c->...", m, u) ** 2))
     h_ext = np.broadcast_to(np.asarray(h_ext, dtype=DTYPE), m.shape)
     e["zeeman"] = -MU0 * ms * V * float(np.sum(m * h_ext))
     e["total"] = sum(e.values())
