@@ -300,9 +300,44 @@ def gif(args):
         print("saved", out)
 
 
+def compare(args):
+    """Compare two temperatures from saved sweeps: T-normalised spectra and noise ratio."""
+    t_hi, t_lo = (float(x) for x in args.compare.split(","))
+    fig, axes = plt.subplots(2, 2, figsize=(11, 8))
+    for row, mode in enumerate(("pma", "ima")):
+        hi = np.load(fig_path(f"domain-noise-{mode}-T{t_hi:g}.npz"))
+        lo = np.load(fig_path(f"domain-noise-{mode}-T{t_lo:g}.npz"))
+        f, Ns, sigmas = hi["f"], list(hi["Ns"]), list(hi["sigmas"])
+        ax = axes[row, 0]
+        for (a, b), color in zip([(0, 0), (len(Ns) - 1, len(sigmas) - 1)], ("navy", "crimson")):
+            label = f"N = {Ns[a]}, $\\sigma$ = {sigmas[b]}"
+            ax.loglog(f, smooth(hi["S"][a, b]) / t_hi, color=color, lw=1, label=f"{label}, {t_hi:g} K")
+            ax.loglog(f, smooth(lo["S"][a, b]) / t_lo, color=color, lw=1, ls="--", label=f"{label}, {t_lo:g} K")
+        ax.set_xlim(5e8, 2e11)
+        ax.set_xlabel("f (Hz)")
+        ax.set_ylabel(r"$\sum_c S_{\langle m_c \rangle}$ / T (1/(Hz K))")
+        ax.set_title(f"{mode.upper()}: spectra divided by T (overlap = linear thermal response)", fontsize=9)
+        ax.legend(fontsize=7)
+        ratio = hi["variance"] / lo["variance"]
+        ax = axes[row, 1]
+        im = ax.imshow(ratio, origin="lower", aspect="auto", cmap="coolwarm", vmin=0, vmax=2 * t_hi / t_lo)
+        ax.set_xticks(range(len(sigmas)), [str(x) for x in sigmas])
+        ax.set_yticks(range(len(Ns)), [str(x) for x in Ns])
+        ax.set_xlabel(r"$\sigma$")
+        ax.set_ylabel("# domains N")
+        ax.set_title(f"{mode.upper()}: noise ratio <dm^2>({t_hi:g} K) / <dm^2>({t_lo:g} K), linear = {t_hi / t_lo:g}", fontsize=9)
+        for (a, b), v in np.ndenumerate(ratio):
+            ax.text(b, a, f"{v:.1f}", ha="center", va="center", fontsize=9)
+        fig.colorbar(im, ax=ax)
+        print(mode, np.round(ratio, 2).tolist())
+    fig.tight_layout()
+    fig.savefig(fig_path(f"domain-noise-T{t_hi:g}-vs-T{t_lo:g}.png"), dpi=170)
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("what", choices=["sweep", "gif"])
+    parser.add_argument("what", choices=["sweep", "gif", "compare"])
+    parser.add_argument("--compare", default="300,50", help="two temperatures for `compare`")
     parser.add_argument("--modes", default="pma,ima")
     parser.add_argument("--domains", default="1,2,4,8")
     parser.add_argument("--sigmas", default="0,0.2,0.5")
@@ -320,6 +355,8 @@ def main():
     TEMPERATURE = args.temperature
     if args.what == "sweep":
         sweep(args)
+    elif args.what == "compare":
+        compare(args)
     else:
         if args.modes == "pma,ima":
             args.modes = "pma,ima,mixed"

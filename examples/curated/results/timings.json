@@ -10,6 +10,17 @@
     "seconds": 15.16,
     "sigma": 0.5
   },
+  "domain_noise_gif_ima_T50": {
+    "domains": 4,
+    "frames": 100,
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "seconds": 12.06,
+    "sigma": 0.5
+  },
   "domain_noise_gif_mixed_T300": {
     "domains": 4,
     "frames": 100,
@@ -19,6 +30,17 @@
       1
     ],
     "seconds": 14.84,
+    "sigma": 0.5
+  },
+  "domain_noise_gif_mixed_T50": {
+    "domains": 4,
+    "frames": 100,
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "seconds": 11.9,
     "sigma": 0.5
   },
   "domain_noise_gif_pma_T300": {
@@ -32,6 +54,17 @@
     "seconds": 15.5,
     "sigma": 0.5
   },
+  "domain_noise_gif_pma_T50": {
+    "domains": 4,
+    "frames": 100,
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "seconds": 12.23,
+    "sigma": 0.5
+  },
   "domain_noise_sweep_ima_T300": {
     "mesh": [
       32,
@@ -43,6 +76,19 @@
     "seeds": 3,
     "solver": "relax + heun",
     "temperature_K": 300.0,
+    "time_per_run_ns": 6.0
+  },
+  "domain_noise_sweep_ima_T50": {
+    "mesh": [
+      32,
+      8,
+      1
+    ],
+    "runs": 36,
+    "seconds": 583.12,
+    "seeds": 3,
+    "solver": "relax + heun",
+    "temperature_K": 50.0,
     "time_per_run_ns": 6.0
   },
   "domain_noise_sweep_pma_T300": {
