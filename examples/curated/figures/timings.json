@@ -8,7 +8,7 @@
     ],
     "rk45_steps_total": 327954,
     "samples_per_field": 4000,
-    "seconds": 207.25,
+    "seconds": 213.38,
     "solver": "relax + rk45"
   },
   "noise_spectra": {
@@ -31,7 +31,7 @@
       16,
       1
     ],
-    "seconds": 848.83,
+    "seconds": 857.07,
     "solver": "heun",
     "steps_per_field": 320000
   },
