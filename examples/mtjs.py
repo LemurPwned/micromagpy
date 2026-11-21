@@ -5,7 +5,7 @@ import numpy as np
 
 from micromagpy.config import DTYPE
 from micromagpy.demag import compute_demag_tensor
-from micromagpy.llg import compute_hdemag
+from micromagpy.fields import compute_hdemag
 from micromagpy.shapes import circular_mask, init_m, span_grid
 
 

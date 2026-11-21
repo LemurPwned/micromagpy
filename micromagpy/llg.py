@@ -171,6 +171,34 @@ def euler_heun(
     return normalize(m)
 
 
+def stochastic_heun(
+    alpha: float, gamma: float, m: np.ndarray, field_fn, h_fixed, dt: float
+) -> np.ndarray:
+    """Heun (predictor-corrector) step, the standard Stratonovich scheme for sLLG.
+
+    :param field_fn: ``field_fn(m)`` -> m-dependent field (A/m), evaluated at
+        the start of the step and at the predictor.
+    :param h_fixed: field held constant during the step (A/m): external
+        field, thermal field (already ~ 1/sqrt(dt)), coloured noise, ...
+        May be ``None`` or a scalar ``0``.
+    """
+    m = np.ascontiguousarray(m, dtype=DTYPE)
+    pref = gamma / (1 + alpha**2)
+
+    def total(mm):
+        h = field_fn(mm)
+        if h_fixed is not None and not (np.isscalar(h_fixed) and h_fixed == 0):
+            h = h + h_fixed
+        return _as_field(h, m.shape)
+
+    k1 = np.empty_like(m)
+    _ll_rhs(m, total(m), pref, alpha, k1)
+    m_pred = normalize(m + dt * k1)
+    k2 = np.empty_like(m)
+    _ll_rhs(m_pred, total(m_pred), pref, alpha, k2)
+    return normalize(m + 0.5 * dt * (k1 + k2))
+
+
 def llg(
     A, alpha, ms, m, dt, m_pad, f_n_demag, n, dx, h_zee=0.0, K=0.0, kaxis=(0, 0, 1)
 ):
