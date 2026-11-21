@@ -24,9 +24,9 @@ TIMES.md
 *.json
 
 # curated example outputs are committed (figures + timings)
-!examples/curated/figures/*.png
-!examples/curated/figures/timings.json
-!examples/curated/figures/*.gif
+!examples/curated/results/*.png
+!examples/curated/results/timings.json
+!examples/curated/results/*.gif
 # benchmark outputs are committed
 !benchmarks/figures/*.png
 !benchmarks/figures/*.json

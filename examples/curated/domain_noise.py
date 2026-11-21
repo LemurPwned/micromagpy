@@ -16,7 +16,8 @@ versus the number of domains N and the dispersion sigma.
 Usage::
 
     python domain_noise.py sweep     # PSD vs N and sigma for PMA and IMA (figures + npz)
-    python domain_noise.py gif       # animated m_x, m_y, m_z maps (PMA, IMA, mixed)
+    python domain_noise.py gif       # animated m_x, m_y, m_z maps + live noise spectrum (PMA, IMA, mixed)
+    python domain_noise.py sweep --temperature 50   # same at 50 K (outputs are tagged -T<temperature>)
 """
 
 import argparse
@@ -34,7 +35,7 @@ n = (32, 8, 1)
 dx = (5e-9, 5e-9, 2e-9)
 ms, A, damping = 8e5, 1.3e-11, 0.05
 dt = 1e-13  # Heun; omega*dt of the fastest exchange mode ~ 0.2
-TEMPERATURE = 300.0
+TEMPERATURE = 300.0  # overridden by --temperature
 K0 = {"pma": 8e5, "ima": 5e4}  # PMA: K_eff = K - mu0 Ms^2 / 2 ~ 4e5 J/m^3
 F_DEMAG = compute_demag_tensor(n, dx)
 
@@ -125,7 +126,7 @@ def sweep(args):
         width = np.zeros_like(cent)
         var = np.zeros_like(cent)
         with timed(
-            f"domain_noise_sweep_{mode}",
+            f"domain_noise_sweep_{mode}_T{TEMPERATURE:g}",
             mesh=list(n),
             runs=len(Ns) * len(sigmas) * args.seeds,
             seeds=args.seeds,
@@ -150,7 +151,7 @@ def sweep(args):
                     )
         results[mode] = (f, spectra, cent, width, var)
         np.savez(
-            fig_path(f"domain-noise-{mode}.npz"),
+            fig_path(f"domain-noise-{mode}-T{TEMPERATURE:g}.npz"),
             f=f,
             Ns=Ns,
             sigmas=sigmas,
@@ -199,8 +200,15 @@ def plot_mode(mode, f, spectra, Ns, sigmas, cent, width, var):
         f"(spectra averaged over {SEEDS_USED[0]} disorder realisations)"
     )
     fig.tight_layout()
-    fig.savefig(fig_path(f"domain-noise-{mode}.png"), dpi=170)
+    fig.savefig(fig_path(f"domain-noise-{mode}-T{TEMPERATURE:g}.png"), dpi=170)
     plt.close(fig)
+
+
+def welch_fixed(x, nper):
+    """Welch PSD (summed over the 3 components) with a fixed segment length."""
+    segments = max(1, int(round(2 * len(x) / nper - 1)))
+    f, p = power_spectral_density(x, dt, segments=segments)
+    return f, p.sum(axis=1)
 
 
 def gif(args):
@@ -209,71 +217,146 @@ def gif(args):
     for mode in args.modes.split(","):
         N, s = args.gif_domains, args.gif_sigma
         K, axes_c, labels, K_bar, axis_bar, kinds = domain_anisotropy(mode, N, s, args.seed)
-        frames = []
+        lab2d = labels[:, :, 0]
         every = int(args.frame_dt / dt)
+        frames, bar_m = [], []
 
         def grab(i, t, m):
-            frames.append((t, m[:, :, 0, :].copy()))
+            # per-bar <m> every step (for the spectra), full maps every frame
+            bar_m.append([m[:, :, 0][lab2d == b].mean(axis=0) for b in range(N)])
+            if i % every == 0:
+                frames.append((t, i, m[:, :, 0, :].copy()))
 
-        with timed(f"domain_noise_gif_{mode}", mesh=list(n), domains=N, sigma=s, frames=int(args.gif_time / args.frame_dt)):
-            run(mode, N, s, args.gif_time, seed=args.seed, record_every=every, callback=grab)
-        bar_mz = np.array([[fr[1][labels[:, :, 0] == b, 2].mean() for b in range(N)] for fr in frames])
+        info = dict(mesh=list(n), domains=N, sigma=s, frames=int(args.gif_time / args.frame_dt))
+        with timed(f"domain_noise_gif_{mode}_T{TEMPERATURE:g}", **info):
+            res = run(mode, N, s, args.gif_time, seed=args.seed, record_every=1, callback=grab)
+        m_avg = res["m_avg"]  # (steps, 3) element average, every step
+        bar_m = np.array(bar_m)  # (steps, N, 3)
         times = np.array([fr[0] for fr in frames]) * 1e9
+        nper = int(args.spectrum_window / dt)
+        f_fin, S_fin = welch_fixed(m_avg, nper)
+        bar_spectra = [welch_fixed(bar_m[:, b, :], nper)[1] for b in range(N)]
+        fsel = (f_fin > 0.8e9) & (f_fin < 1e11)
 
-        fig = plt.figure(figsize=(6.4, 5.6), layout="constrained")
-        gs = fig.add_gridspec(4, 1, height_ratios=[1, 1, 1, 1.4])
+        fig = plt.figure(figsize=(10, 5.4), layout="constrained")
+        gs = fig.add_gridspec(3, 2, width_ratios=[1.15, 1])
         ims = []
         extent = (0, n[0] * dx[0] * 1e9, 0, n[1] * dx[1] * 1e9)
         for c, name in enumerate(("m_x", "m_y", "m_z")):
-            ax = fig.add_subplot(gs[c])
-            im = ax.imshow(frames[0][1][..., c].T, origin="lower", extent=extent, vmin=-1, vmax=1, cmap="RdBu_r")
+            ax = fig.add_subplot(gs[c, 0])
+            im = ax.imshow(frames[0][2][..., c].T, origin="lower", extent=extent, vmin=-1, vmax=1, cmap="RdBu_r")
             for b in range(1, N):
                 ax.axvline(b * n[0] / N * dx[0] * 1e9, color="k", lw=0.8)
             for b in range(N):
-                ax.text((b + 0.5) * n[0] / N * dx[0] * 1e9, extent[3] * 1.02, kinds[b].upper(), ha="center", fontsize=7)
+                ax.text((b + 0.5) * n[0] / N * dx[0] * 1e9, extent[3] * 1.03, kinds[b].upper(), ha="center", fontsize=7)
             ax.set_ylabel(f"${name}$\ny (nm)")
-            ax.set_xticks([])
+            if c < 2:
+                ax.set_xticks([])
+            else:
+                ax.set_xlabel("x (nm)")
             ims.append(im)
-        fig.colorbar(ims[0], ax=fig.axes, shrink=0.6, location="right", label="m component")
-        axt = fig.add_subplot(gs[3])
-        lines = [axt.plot([], [], lw=1, label=f"bar {b}")[0] for b in range(N)]
+        fig.colorbar(ims[0], ax=fig.axes[:3], shrink=0.7, location="left", label="m component")
+        colors = [plt.get_cmap("tab10")(b) for b in range(N)]
+        axt = fig.add_subplot(gs[0, 1])
+        lines = [axt.plot([], [], lw=1, color=colors[b], label=f"bar {b}")[0] for b in range(N)]
         axt.set_xlim(0, times[-1])
         axt.set_ylim(-1.05, 1.05)
         axt.set_xlabel("t (ns)")
         axt.set_ylabel(r"bar $\langle m_z \rangle$")
         axt.legend(fontsize=6, ncol=N, loc="lower right")
+        axs = fig.add_subplot(gs[1:, 1])
+        for b in range(N):
+            axs.loglog(f_fin[fsel], bar_spectra[b][fsel], color=colors[b], lw=0.7, alpha=0.35)
+        axs.loglog(f_fin[fsel], S_fin[fsel], "k--", lw=0.8, alpha=0.6, label="element, full run")
+        (run_line,) = axs.loglog([], [], color="crimson", lw=1.4, label="element, data so far")
+        axs.plot([], [], color="gray", lw=0.7, alpha=0.5, label="per bar, full run")
+        axs.set_xlabel("f (Hz)")
+        axs.set_ylabel(r"$\sum_c S_{\langle m_c \rangle}$ (1/Hz)")
+        axs.set_title(f"thermal noise spectrum (Welch, {args.spectrum_window * 1e9:g} ns windows)", fontsize=9)
+        axs.legend(fontsize=7, loc="lower left")
+        lo = min(np.min(S_fin[fsel]), min(np.min(bs[fsel]) for bs in bar_spectra))
+        hi = max(np.max(S_fin[fsel]), max(np.max(bs[fsel]) for bs in bar_spectra))
+        axs.set_ylim(lo / 3, hi * 3)
         title = fig.suptitle("")
 
         def update(k):
+            t, i, mk = frames[k]
             for c in range(3):
-                ims[c].set_data(frames[k][1][..., c].T)
+                ims[c].set_data(mk[..., c].T)
+            bz = bar_m[: i + 1 : every, :, 2]
             for b, line in enumerate(lines):
-                line.set_data(times[: k + 1], bar_mz[: k + 1, b])
-            title.set_text(rf"{mode.upper()}, N = {N}, $\sigma$ = {s}, T = {TEMPERATURE:g} K, t = {times[k]:.2f} ns")
-            return ims + lines
+                line.set_data(times[: k + 1], bz[: k + 1, b])
+            if i + 1 >= nper:
+                f_k, S_k = welch_fixed(m_avg[: i + 1], nper)
+                sel = (f_k > 0.8e9) & (f_k < 1e11)
+                run_line.set_data(f_k[sel], S_k[sel])
+            title.set_text(rf"{mode.upper()} bars, N = {N}, $\sigma$ = {s}, T = {TEMPERATURE:g} K, t = {times[k]:.2f} ns")
+            return ims + lines + [run_line]
 
         anim = FuncAnimation(fig, update, frames=len(frames), blit=False)
-        anim.save(fig_path(f"domain-noise-{mode}.gif"), writer=PillowWriter(fps=12), dpi=65)
+        out = fig_path(f"domain-noise-{mode}-T{TEMPERATURE:g}.gif")
+        anim.save(out, writer=PillowWriter(fps=12), dpi=72)
         plt.close(fig)
-        print("saved", fig_path(f"domain-noise-{mode}.gif"))
+        print("saved", out)
+
+
+def compare(args):
+    """Compare two temperatures from saved sweeps: T-normalised spectra and noise ratio."""
+    t_hi, t_lo = (float(x) for x in args.compare.split(","))
+    fig, axes = plt.subplots(2, 2, figsize=(11, 8))
+    for row, mode in enumerate(("pma", "ima")):
+        hi = np.load(fig_path(f"domain-noise-{mode}-T{t_hi:g}.npz"))
+        lo = np.load(fig_path(f"domain-noise-{mode}-T{t_lo:g}.npz"))
+        f, Ns, sigmas = hi["f"], list(hi["Ns"]), list(hi["sigmas"])
+        ax = axes[row, 0]
+        for (a, b), color in zip([(0, 0), (len(Ns) - 1, len(sigmas) - 1)], ("navy", "crimson")):
+            label = f"N = {Ns[a]}, $\\sigma$ = {sigmas[b]}"
+            ax.loglog(f, smooth(hi["S"][a, b]) / t_hi, color=color, lw=1, label=f"{label}, {t_hi:g} K")
+            ax.loglog(f, smooth(lo["S"][a, b]) / t_lo, color=color, lw=1, ls="--", label=f"{label}, {t_lo:g} K")
+        ax.set_xlim(5e8, 2e11)
+        ax.set_xlabel("f (Hz)")
+        ax.set_ylabel(r"$\sum_c S_{\langle m_c \rangle}$ / T (1/(Hz K))")
+        ax.set_title(f"{mode.upper()}: spectra divided by T (overlap = linear thermal response)", fontsize=9)
+        ax.legend(fontsize=7)
+        ratio = hi["variance"] / lo["variance"]
+        ax = axes[row, 1]
+        im = ax.imshow(ratio, origin="lower", aspect="auto", cmap="coolwarm", vmin=0, vmax=2 * t_hi / t_lo)
+        ax.set_xticks(range(len(sigmas)), [str(x) for x in sigmas])
+        ax.set_yticks(range(len(Ns)), [str(x) for x in Ns])
+        ax.set_xlabel(r"$\sigma$")
+        ax.set_ylabel("# domains N")
+        ax.set_title(f"{mode.upper()}: noise ratio <dm^2>({t_hi:g} K) / <dm^2>({t_lo:g} K), linear = {t_hi / t_lo:g}", fontsize=9)
+        for (a, b), v in np.ndenumerate(ratio):
+            ax.text(b, a, f"{v:.1f}", ha="center", va="center", fontsize=9)
+        fig.colorbar(im, ax=ax)
+        print(mode, np.round(ratio, 2).tolist())
+    fig.tight_layout()
+    fig.savefig(fig_path(f"domain-noise-T{t_hi:g}-vs-T{t_lo:g}.png"), dpi=170)
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("what", choices=["sweep", "gif"])
+    parser.add_argument("what", choices=["sweep", "gif", "compare"])
+    parser.add_argument("--compare", default="300,50", help="two temperatures for `compare`")
     parser.add_argument("--modes", default="pma,ima")
     parser.add_argument("--domains", default="1,2,4,8")
     parser.add_argument("--sigmas", default="0,0.2,0.5")
     parser.add_argument("--time", type=float, default=6e-9)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--temperature", type=float, default=300.0, help="K, same in every cell")
     parser.add_argument("--seeds", type=int, default=3, help="disorder realisations averaged per (N, sigma)")
     parser.add_argument("--gif-domains", type=int, default=4)
     parser.add_argument("--gif-sigma", type=float, default=0.5)
-    parser.add_argument("--gif-time", type=float, default=2e-9)
-    parser.add_argument("--frame-dt", type=float, default=20e-12)
+    parser.add_argument("--gif-time", type=float, default=4e-9)
+    parser.add_argument("--frame-dt", type=float, default=40e-12)
+    parser.add_argument("--spectrum-window", type=float, default=1e-9, help="Welch segment length (s) in the GIFs")
     args = parser.parse_args()
+    global TEMPERATURE
+    TEMPERATURE = args.temperature
     if args.what == "sweep":
         sweep(args)
+    elif args.what == "compare":
+        compare(args)
     else:
         if args.modes == "pma,ima":
             args.modes = "pma,ima,mixed"

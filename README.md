@@ -301,6 +301,25 @@ noise = [
 res = simulate(m, dx, ms, 1.3e-11, alpha, dt, 100, K=6e5, noise=noise)  # stochastic Heun
 ```
 
+### Time drivers and constants
+
+Time-dependent quantities come from drivers in `micromagpy.drivers`, which mirror
+cmtj's scalar and axial drivers: `constant`, `step`, `pulse` and `sine`. Any value
+accepted as an amplitude can be a number, an array, a `callable(t)` or a driver;
+`as_driver` converts it once at construction. This covers `simulate(h_ext=...)`,
+`SOT`/`STT` amplitudes and polarisation, and the `ThermalField` temperature.
+Physical constants (`MU0`, `GAMMA`, `HBAR`, `ELECTRON_CHARGE`, `BOLTZMANN`) live
+in `micromagpy.config`.
+
+```python
+from micromagpy import drivers
+
+h_ext = drivers.sine((0, 0, 5e3), frequency=10e9, offset=(0, 0, 4e5))   # A/m
+hdl = drivers.pulse(2e4, start=0.0, width=0.5e-9)                         # 0.5 ns SOT pulse
+temperature = drivers.step(300.0, start=1e-9)                             # heat up at 1 ns
+print(h_ext(0.0), float(hdl(0.2e-9)), float(temperature(0.5e-9)))
+```
+
 ### Spin-orbit and spin-transfer torques
 
 These follow [cmtj](https://github.com/LemurPwned/cmtj)'s conventions. With
@@ -315,19 +334,19 @@ These follow [cmtj](https://github.com/LemurPwned/cmtj)'s conventions. With
   `eta = P L^2 / (L^2 + 1 + (L^2 - 1) m·p)`, or `P / (1 + L m·p)` with
   `alternative=True`.
 
-Amplitudes can be scalars, per-cell arrays or callables of time. `p` can be a
-vector or a per-cell array. `mask` limits the torque to part of the mesh.
+Amplitudes can be scalars, per-cell arrays, callables of time or drivers. `p` can
+be a vector or a per-cell array. `mask` limits the torque to part of the mesh.
 
 ```python
 import numpy as np
+from micromagpy import drivers
 from micromagpy.simulation import simulate
 from micromagpy.torques import SOT, STT
 
 n, dx, ms, alpha = (16, 16, 1), (4e-9, 4e-9, 1e-9), 8e5, 0.05
 m = np.zeros(n + (3,))
 m[..., 2] = 1.0
-pulse = lambda t: 2e4 if t < 0.5e-9 else 0.0                    # damping-like SOT pulse (A/m)
-sot = SOT(Hfl=0.0, Hdl=pulse, p=(0, 1, 0))
+sot = SOT(Hfl=0.0, Hdl=drivers.pulse(2e4, start=0.0, width=0.5e-9), p=(0, 1, 0))  # A/m
 stt = STT(j=-5e10, p=(0, 0, 1), thickness=1e-9, ms=ms, polarisation=0.6, spacer_lambda=1.0)
 res = simulate(m, dx, ms, 1.3e-11, alpha, 1e-12, 100, K=8e5, h_ext=(2e4, 0, 0),
                torques=[sot, stt], solver="rk45")
@@ -372,7 +391,8 @@ Results are in [`benchmarks/figures/benchmark.json`](https://github.com/LemurPwn
 holds micromagnetic versions of the
 [cmtj curated examples](https://github.com/LemurPwned/cmtj/tree/master/curated-examples):
 1/f generator spectra, seeded reproducible noise, FMR, a spin-torque
-oscillator, SOT switching loops, noise of domains with dispersed anisotropy,
+oscillator, SOT switching loops, thermal noise of PMA / IMA domains with dispersed
+anisotropy at 300 K and 50 K (with animated domain maps and live noise spectra),
 and noise spectrograms. Figures, one page per example and run times are in
 [`examples/curated/results/`](https://github.com/LemurPwned/micromagpy/tree/master/examples/curated/results).
 The scripts need the `examples` extra (`pip install "micromagpy[examples]"`).

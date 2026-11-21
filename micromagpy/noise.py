@@ -46,9 +46,9 @@ from collections.abc import Callable, Sequence
 
 import numpy as np
 
-from .config import DTYPE, GAMMA, MU0
+from .config import BOLTZMANN, DTYPE, GAMMA, MU0  # noqa: F401  (BOLTZMANN re-exported)
+from .drivers import as_driver
 
-BOLTZMANN = 1.380649e-23
 
 SeedLike = None | int | np.random.Generator
 
@@ -415,7 +415,7 @@ class ThermalField:
     with ``gamma0 = mu0 * gamma`` (:data:`micromagpy.config.GAMMA`, m/(A s)).
     Use it as a field that is constant during a step (Stratonovich / Heun).
 
-    :param temperature: K, or a callable ``T(t)``.
+    :param temperature: K, a callable ``T(t)`` or a :mod:`micromagpy.drivers` driver.
     :param mask: optional boolean array of shape ``n`` (or ``n + (3,)``)
         selecting magnetic cells.
     """
@@ -425,7 +425,7 @@ class ThermalField:
         self.volume = float(np.prod(dx))
         self.ms = float(ms)
         self.alpha = float(alpha)
-        self.temperature = temperature
+        self.temperature = as_driver(temperature)
         self.dt = float(dt)
         self.gamma = float(gamma)
         self.rng = _rng(seed)
@@ -437,7 +437,7 @@ class ThermalField:
             self.mask = mask.reshape(self.n + (1,)).astype(DTYPE)
 
     def sigma(self, t: float = 0.0, dt: float | None = None) -> float:
-        T = self.temperature(t) if callable(self.temperature) else self.temperature
+        T = float(self.temperature(t))
         dt = self.dt if dt is None else dt
         return sqrt(2 * self.alpha * BOLTZMANN * T / (self.gamma * MU0 * self.ms * self.volume * dt))
 

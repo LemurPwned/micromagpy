@@ -5,7 +5,7 @@ import os
 import time
 from contextlib import contextmanager
 
-FIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "figures")
+FIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
 os.makedirs(FIG_DIR, exist_ok=True)
 
 
