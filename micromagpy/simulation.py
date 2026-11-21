@@ -11,6 +11,7 @@ from .demag import compute_demag_tensor, compute_trivial_tensor
 from .fields import h_eff
 from .llg import ll_operator, normalize, rk4, stochastic_heun
 from .noise import ThermalField
+from .drivers import as_driver
 from .solvers import RK45State, integrate_rk45, llg_rhs_factory
 
 
@@ -38,7 +39,8 @@ def simulate(
 
     :param m: initial magnetisation ``n + (3,)``; cells with ``|m| = 0`` are
         treated as non-magnetic and ignored in averages.
-    :param h_ext: external field (A/m), array, vector or callable ``h(t)``.
+    :param h_ext: external field (A/m): array, vector, callable ``h(t)`` or a
+        :mod:`micromagpy.drivers` driver.
     :param demag: ``True`` (compute tensor), ``False`` (no demag) or a
         precomputed Fourier-space tensor.
     :param noise: noise sources. Objects with ``tick()`` and ``field(m)``
@@ -56,6 +58,7 @@ def simulate(
     :return: dict with ``t`` (s), ``m_avg`` (recorded averages) and ``m`` (final).
     """
     m = normalize(np.array(m, dtype=DTYPE))
+    h_ext = as_driver(h_ext)
     n = m.shape[:3]
     magnetic = np.linalg.norm(m, axis=-1) > 0
     n_mag = max(int(magnetic.sum()), 1)
@@ -113,7 +116,7 @@ def simulate(
         if solver in ("rk4", "rk45"):
             # external field evaluated at the RK stages, noise held over the step
             def total(mm, tt, h_noise=h_noise):
-                h = deterministic(mm) + np.asarray(h_ext(tt) if callable(h_ext) else h_ext, dtype=DTYPE)
+                h = deterministic(mm) + h_ext(tt)
                 return h + h_noise
 
             if solver == "rk4":
@@ -123,7 +126,7 @@ def simulate(
                 rhs = llg_rhs_factory(alpha, GAMMA, total, extra_rhs=extra)
                 m = integrate_rk45(rhs, m, t, t + dt, rk_state, tol)
             continue
-        h_fixed = np.asarray(h_ext(t) if callable(h_ext) else h_ext, dtype=DTYPE) + h_noise
+        h_fixed = h_ext(t) + h_noise
         if solver == "heun":
             heun_extra = None if extra is None else (lambda mm, out, t=t: extra(mm, t, out))
             m = stochastic_heun(alpha, GAMMA, m, deterministic, h_fixed, dt, extra_rhs=heun_extra)

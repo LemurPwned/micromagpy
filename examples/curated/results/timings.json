@@ -1,5 +1,5 @@
 {
-  "domain_noise_gif_ima": {
+  "domain_noise_gif_ima_T300": {
     "domains": 4,
     "frames": 100,
     "mesh": [
@@ -7,10 +7,10 @@
       8,
       1
     ],
-    "seconds": 4.94,
+    "seconds": 15.16,
     "sigma": 0.5
   },
-  "domain_noise_gif_mixed": {
+  "domain_noise_gif_mixed_T300": {
     "domains": 4,
     "frames": 100,
     "mesh": [
@@ -18,10 +18,10 @@
       8,
       1
     ],
-    "seconds": 5.48,
+    "seconds": 14.84,
     "sigma": 0.5
   },
-  "domain_noise_gif_pma": {
+  "domain_noise_gif_pma_T300": {
     "domains": 4,
     "frames": 100,
     "mesh": [
@@ -29,10 +29,10 @@
       8,
       1
     ],
-    "seconds": 5.46,
+    "seconds": 15.5,
     "sigma": 0.5
   },
-  "domain_noise_sweep_ima": {
+  "domain_noise_sweep_ima_T300": {
     "mesh": [
       32,
       8,
@@ -45,7 +45,7 @@
     "temperature_K": 300.0,
     "time_per_run_ns": 6.0
   },
-  "domain_noise_sweep_pma": {
+  "domain_noise_sweep_pma_T300": {
     "mesh": [
       32,
       8,
