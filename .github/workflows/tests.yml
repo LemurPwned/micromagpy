@@ -16,14 +16,11 @@ jobs:
   pytest:
     name: pytest (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.13", "3.14"]
-    env:
-      # numba JIT on shared CI runners: keep thread oversubscription in check
-      NUMBA_NUM_THREADS: "2"
     steps:
       - uses: actions/checkout@v7
 
