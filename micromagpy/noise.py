@@ -42,7 +42,7 @@ Analysis helpers: :func:`power_spectral_density`, :func:`fit_spectral_exponent`.
 from __future__ import annotations
 
 from math import log10, pi, sqrt
-from typing import Callable, Optional, Sequence, Union
+from collections.abc import Callable, Sequence
 
 import numpy as np
 
@@ -50,7 +50,7 @@ from .config import DTYPE, GAMMA, MU0
 
 BOLTZMANN = 1.380649e-23
 
-SeedLike = Union[None, int, np.random.Generator]
+SeedLike = None | int | np.random.Generator
 
 
 def _rng(seed: SeedLike) -> np.random.Generator:
@@ -177,7 +177,7 @@ class VectorAlphaNoise:
         std: float,
         scale: float = 1.0,
         axis: str = "all",
-        normalized: Optional[bool] = None,
+        normalized: bool | None = None,
         shape=None,
         seed: SeedLike = None,
     ):
@@ -308,7 +308,7 @@ class OUAlphaNoise:
         out = self.state.sum(axis=0)
         return float(out) if self.shape == () else out
 
-    def tick(self, dt: Optional[float] = None):
+    def tick(self, dt: float | None = None):
         if dt is not None:
             self.set_dt(dt)
         self.state *= self._a
@@ -328,8 +328,8 @@ def make_temporal_generator(
     dt: float,
     shape,
     seed: SeedLike = None,
-    f_min: Optional[float] = None,
-    f_max: Optional[float] = None,
+    f_min: float | None = None,
+    f_max: float | None = None,
     poles_per_decade: float = 2.0,
     buffer_size: int = 4096,
 ):
@@ -436,12 +436,12 @@ class ThermalField:
                 mask = mask.any(axis=-1)
             self.mask = mask.reshape(self.n + (1,)).astype(DTYPE)
 
-    def sigma(self, t: float = 0.0, dt: Optional[float] = None) -> float:
+    def sigma(self, t: float = 0.0, dt: float | None = None) -> float:
         T = self.temperature(t) if callable(self.temperature) else self.temperature
         dt = self.dt if dt is None else dt
         return sqrt(2 * self.alpha * BOLTZMANN * T / (self.gamma * MU0 * self.ms * self.volume * dt))
 
-    def sample(self, t: float = 0.0, m: Optional[np.ndarray] = None, dt: Optional[float] = None) -> np.ndarray:
+    def sample(self, t: float = 0.0, m: np.ndarray | None = None, dt: float | None = None) -> np.ndarray:
         h = self.rng.standard_normal(self.n + (3,))
         h *= self.sigma(t, dt)
         if self.mask is not None:
@@ -486,11 +486,11 @@ class ColouredNoiseField:
         dt: float,
         regions=None,
         axis=None,
-        correlation_length: Optional[float] = None,
+        correlation_length: float | None = None,
         dx=None,
         volume_scaling: bool = False,
         generator: str = "ou",
-        generator_kwargs: Optional[dict] = None,
+        generator_kwargs: dict | None = None,
         mask=None,
         seed: SeedLike = None,
     ):
@@ -558,7 +558,7 @@ class ColouredNoiseField:
         self._current = h
         return h
 
-    def sample(self, t: float = 0.0, m: Optional[np.ndarray] = None, dt: Optional[float] = None) -> np.ndarray:
+    def sample(self, t: float = 0.0, m: np.ndarray | None = None, dt: float | None = None) -> np.ndarray:
         return self.tick()
 
     __call__ = sample
@@ -598,7 +598,7 @@ class AnisotropyNoise:
         dK = self._dK.current[..., :1]
         return self.pref * dK * (m @ self.u)[..., None] * self.u
 
-    def sample(self, t: float = 0.0, m: Optional[np.ndarray] = None, dt: Optional[float] = None) -> np.ndarray:
+    def sample(self, t: float = 0.0, m: np.ndarray | None = None, dt: float | None = None) -> np.ndarray:
         if m is None:
             raise ValueError("AnisotropyNoise needs the magnetisation m")
         self.tick()
@@ -657,4 +657,4 @@ def fit_spectral_exponent(f: np.ndarray, psd: np.ndarray, f_min: float = None, f
     return -slope
 
 
-NoiseSource = Union[ThermalField, ColouredNoiseField, AnisotropyNoise, Callable]
+NoiseSource = ThermalField | ColouredNoiseField | AnisotropyNoise | Callable

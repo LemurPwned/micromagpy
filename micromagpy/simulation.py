@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Optional, Sequence
+from collections.abc import Callable, Sequence
 
 import numpy as np
 
@@ -29,7 +29,7 @@ def simulate(
     noise: Sequence = (),
     solver: str = "heun",
     record_every: int = 1,
-    callback: Optional[Callable] = None,
+    callback: Callable | None = None,
     progress: bool = False,
     tol: float = 1e-6,
     torques: Sequence = (),
