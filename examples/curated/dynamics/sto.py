@@ -65,6 +65,8 @@ def main():
                 example = (j, res)
         info["rk45_steps_total"] = steps
 
+    np.savez(fig_path("sto.npz"), j=js, f=freqs, mz=mzs, mnorm=mnorm, f_theory=f_theory,
+             j_example=example[0], t_example=example[1]["t"], m_example=example[1]["m_avg"])
     fig = plt.figure(figsize=(13, 4.2))
     ax = fig.add_subplot(1, 3, 1, projection="3d")
     u, v = np.mgrid[0 : np.pi : 40j, 0 : 2 * np.pi : 40j]

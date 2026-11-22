@@ -97,6 +97,8 @@ def main():
     print(f"Ku = {Ku / 1e3:.0f} kJ/m^3, V = {V * 1e27:.0f} nm^3, H(kT) = {h_scale:.0f} A/m, "
           f"mean dwell time at H = 0: {dwell * 1e9:.2f} ns, m_s = {m_s:.2f}")
 
+    np.savez(fig_path("p-bit.npz"), fields=fields, avg=avg, err=err, t=t, traces=mz[i0, :3],
+             m_s=m_s, h_scale=h_scale, dwell=dwell, Ku=Ku)
     fig, (ax, bx) = plt.subplots(1, 2, figsize=(10, 3.8), gridspec_kw={"width_ratios": [1.6, 1]})
     for r in range(min(3, args.replicas)):
         ax.plot(t * 1e9, mz[i0, r] + 2.4 * r, lw=0.6)

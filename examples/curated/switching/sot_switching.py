@@ -75,6 +75,8 @@ def main():
             print(f"Hx = {hx:+.0e} A/m, Hfl/Hdl = {fl}: switching at Hdl = {np.round(sw / 1e3, 1)} kA/m")
         info["rk45_steps_total"] = total
 
+    np.savez(fig_path("sot-switching.npz"), cases=np.array([c[:2] for c in cases]), hdl=results[0][2],
+             j=results[0][2] / HDL_PER_J, mz=np.array([r[3] for r in results]), n_init=results[0][4])
     Hk_eff = 2 * K / (MU0 * ms) - ms
     fig, axes = plt.subplots(1, len(cases), figsize=(4.3 * len(cases), 3.8), sharey=True)
     for ax, (hx, fl, hdl, mz, n_init) in zip(axes, results):

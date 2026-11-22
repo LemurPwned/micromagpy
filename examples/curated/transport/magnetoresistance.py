@@ -56,6 +56,7 @@ def main():
             out[phi], s = sweep(phi, H, f_demag)
             info["relax_steps_total"] += int(s)
 
+    np.savez(fig_path("magnetoresistance.npz"), H=H, k=len(up), phi1=out[1], phi45=out[45])
     hk_eff = 2 * Ku / (MU0 * ms) - ms
     fig, axes = plt.subplots(2, 2, figsize=(8, 6), sharex=True)
     k = len(up)

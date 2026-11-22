@@ -82,6 +82,7 @@ def main():
         tinfo["rk45_steps_total"] = rk_steps
     spectra = np.array(spectra)
 
+    np.savez(fig_path("fmr-basic.npz"), H=Hscan, f=f, spectra=spectra, mz=np.array(mz_avg))
     Hk_eff = 2 * Ku / (MU0 * ms) - ms  # thin-film estimate
     fig, (ax, ax2) = plt.subplots(1, 2, figsize=(11, 4.2), gridspec_kw={"width_ratios": [3, 1]})
     ax.pcolormesh(Hscan / 1e3, f / 1e9, 20 * np.log10(spectra.T + 1e-12), shading="nearest", cmap="magma")

@@ -70,6 +70,7 @@ def main():
     print(f"switched fraction over the map: {p_switch.mean():.2f}")
 
     j = hdl / HDL_PER_J
+    np.savez(fig_path("sot-phase-diagram.npz"), hx=hx, j=j, mz=mz)
     fig, (ax, bx) = plt.subplots(1, 2, figsize=(10, 4))
     ext = [j[0] / 1e12, j[-1] / 1e12, hx[0] / 1e3, hx[-1] / 1e3]
     im = ax.imshow(mz.mean(-1), origin="lower", aspect="auto", extent=ext, cmap="RdBu", vmin=-1, vmax=1)

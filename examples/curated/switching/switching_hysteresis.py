@@ -60,6 +60,7 @@ def main():
     hc = [sweep[:q][np.argmax(mx[:q] < 0)], sweep[up][np.argmax(mx[up] > 0)]]
     print(f"coercive fields: {hc[0] / 1e3:.1f} / {hc[1] / 1e3:.1f} kA/m, H_k = {2 * Ku / (MU0 * ms) / 1e3:.1f} kA/m")
 
+    np.savez(fig_path("switching-hysteresis.npz"), H=sweep, mx=mx, q=q, hc=hc)
     fig, ax = plt.subplots(figsize=(5.5, 4.2))
     ax.plot(sweep[:q] / 1e3, mx[:q], "-", color="crimson", lw=2, label=r"0 $\to$ $-H_{max}$")
     ax.plot(sweep[up] / 1e3, mx[up], "-", color="navy", lw=2, label=r"$-H_{max} \to +H_{max}$")

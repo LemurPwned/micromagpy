@@ -50,6 +50,10 @@ micromagpy does not model yet; `ahe_loops.py` is covered by
 `switching_hysteresis.py` + `magnetoresistance.py`, and
 `vsd-basic-freq-scan.py` by `spin_diode.py`.
 
+## Macrospin comparison
+
+[`compare/`](compare/README.md) runs cmtj on the device of each ported example and puts the macrospin next to the micromagnetic result: hysteresis, magnetoresistance, FMR, STO, SOT switching, the SOT phase diagram, the p-bit and the spin diode. It shows where a macrospin is enough and where the mesh matters.
+
 ## Timings
 
 Wall times from each folder's `results/timings.json`. numba runs: older entries on a 4-core container, `switching_hysteresis` / `magnetoresistance` on a Mac M5 Pro with one numba thread. JAX runs on the NVIDIA GB10 (DGX Spark).
