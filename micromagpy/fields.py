@@ -72,6 +72,44 @@ def _exchange_anisotropy_kernel(m, hd, scale_d, out, cex, idx2, hk, u, add_hd):
                     out[i, j, k, c] = val
 
 
+@njit(parallel=True, cache=True)
+def _dmi_kernel(m, out, cx, cy):
+    """out += cx y x (m[i+1] - m[i-1]) - cy x x (m[j+1] - m[j-1]); missing neighbours are 0."""
+    nx, ny, nz, _ = m.shape
+    for i in prange(nx):
+        for j in range(ny):
+            for k in range(nz):
+                dxz = (m[i + 1, j, k, 2] if i + 1 < nx else 0.0) - (m[i - 1, j, k, 2] if i > 0 else 0.0)
+                dxx = (m[i + 1, j, k, 0] if i + 1 < nx else 0.0) - (m[i - 1, j, k, 0] if i > 0 else 0.0)
+                dyz = (m[i, j + 1, k, 2] if j + 1 < ny else 0.0) - (m[i, j - 1, k, 2] if j > 0 else 0.0)
+                dyy = (m[i, j + 1, k, 1] if j + 1 < ny else 0.0) - (m[i, j - 1, k, 1] if j > 0 else 0.0)
+                out[i, j, k, 0] += cx * dxz
+                out[i, j, k, 1] += cy * dyz
+                out[i, j, k, 2] -= cx * dxx + cy * dyy
+
+
+def add_hdmi(out: np.ndarray, m: np.ndarray, D: float, ms: float, dx: tuple) -> np.ndarray:
+    """Add the interfacial DMI field of :func:`compute_hdmi` to ``out`` in place."""
+    _dmi_kernel(m, out, D / (MU0 * ms * dx[0]), D / (MU0 * ms * dx[1]))
+    return out
+
+
+def compute_hdmi(D: float, ms: float, m: np.ndarray, dx: tuple) -> np.ndarray:
+    """Interfacial DMI field (A/m) for a film with normal z (MuMax3 ``Dind`` sign convention).
+
+    Energy density ``D [m_z div m - (m . grad) m_z] = D [y . (m x dm/dx) - x . (m x dm/dy)]``,
+    discretised on nearest-neighbour bonds, ``(D V / dx) y . (m_i x m_i+1)`` along x
+    and ``-(D V / dy) x . (m_j x m_j+1)`` along y. Inside the magnet the field is
+    the central difference ``2D/(mu0 Ms) (dmz/dx, dmz/dy, -dmx/dx - dmy/dy)``; at
+    mesh edges and next to empty cells (``|m| = 0``) the missing bonds give the
+    free-edge condition ``dm/dn = D/(2A) (z x n) x m`` in the continuum limit.
+    The field is the exact gradient of :func:`micromagpy.energy.energies` ``"dmi"``.
+    Resolve the DMI length ``2A/D`` with the cell size.
+    """
+    m = np.ascontiguousarray(m, dtype=DTYPE)
+    return add_hdmi(np.zeros_like(m), m, D, ms, dx)
+
+
 def compute_anisotropy_field(ms: float, K, m: np.ndarray, axis) -> np.ndarray:
     """Uniaxial anisotropy field ``2K/(mu0 Ms) (m . u) u`` (K, axis scalar/vector or per cell)."""
     hk, u = anisotropy_arrays(ms, K, axis, m.shape[:3])
@@ -141,8 +179,8 @@ def compute_hdemag(
     return h[: n[0], : n[1], : n[2], :]
 
 
-def h_eff(A, ms, K, kaxis, m, m_pad, f_n_demag, n, dx):
-    """Demag + exchange + uniaxial anisotropy field (A/m).
+def h_eff(A, ms, K, kaxis, m, m_pad, f_n_demag, n, dx, D=0.0):
+    """Demag + exchange + uniaxial anisotropy (+ interfacial DMI if ``D``) field (A/m).
 
     ``K`` / ``kaxis`` may be per cell (shapes ``n`` / ``n + (3,)``), e.g. for
     grains or domains with different anisotropy, see :func:`anisotropy_arrays`.
@@ -154,4 +192,6 @@ def h_eff(A, ms, K, kaxis, m, m_pad, f_n_demag, n, dx):
     idx2 = np.array([1.0 / d**2 for d in dx], dtype=DTYPE)
     hk, u = anisotropy_arrays(ms, K, kaxis, n)
     _exchange_anisotropy_kernel(m, hd, float(ms), h, 2 * A / (MU0 * ms), idx2, hk, u, True)
+    if D:
+        add_hdmi(h, m, D, ms, dx)
     return h

@@ -15,7 +15,7 @@ import numpy as np
 
 from .config import DTYPE, GAMMA, MU0
 from .demag import compute_demag_tensor, compute_trivial_tensor
-from .fields import anisotropy_arrays, compute_hdemag, compute_hex, h_eff
+from .fields import anisotropy_arrays, compute_hdemag, compute_hdmi, compute_hex, h_eff
 from .llg import normalize
 from .solvers import RK45State, _max_cell_norm, damping_rhs_factory, rk45_step
 
@@ -28,7 +28,7 @@ def _tensor(n, dx, demag):
     return demag
 
 
-def energies(m, dx, ms, A=0.0, K=0.0, kaxis=(0, 0, 1), h_ext=0.0, demag=True) -> dict:
+def energies(m, dx, ms, A=0.0, K=0.0, kaxis=(0, 0, 1), h_ext=0.0, demag=True, D=0.0) -> dict:
     """Energy terms (J) and their sum for magnetisation ``m``."""
     m = np.ascontiguousarray(m, dtype=DTYPE)
     n = m.shape[:3]
@@ -36,6 +36,7 @@ def energies(m, dx, ms, A=0.0, K=0.0, kaxis=(0, 0, 1), h_ext=0.0, demag=True) ->
     f_n = _tensor(n, dx, demag)
     e = {}
     e["exchange"] = -0.5 * MU0 * ms * V * float(np.sum(m * compute_hex(A, ms, m, dx, n))) if A else 0.0
+    e["dmi"] = -0.5 * MU0 * ms * V * float(np.sum(m * compute_hdmi(D, ms, m, dx))) if D else 0.0
     e["demag"] = -0.5 * MU0 * ms * V * float(np.sum(m * ms * compute_hdemag(m, f_n, n)))
     hk, u = anisotropy_arrays(ms, K, kaxis, n)
     e["anisotropy"] = -0.5 * MU0 * ms * V * float(np.sum(hk * np.einsum("...c,...c->...", m, u) ** 2))
@@ -59,6 +60,7 @@ def relax(
     max_steps: int = 100000,
     dt0: float = 1e-13,
     energy_every: int = 0,
+    D: float = 0.0,
 ):
     """Minimise the energy by integrating the precession-free flow ``dm/dt = -gamma m x (m x H)``.
 
@@ -76,7 +78,7 @@ def relax(
     h_ext_arr = np.broadcast_to(np.asarray(h_ext, dtype=DTYPE), m.shape)
 
     def field(mm, t=0.0):
-        return h_eff(A=A, ms=ms, K=K, kaxis=kaxis, m=mm, m_pad=None, f_n_demag=f_n, n=n, dx=dx) + h_ext_arr
+        return h_eff(A=A, ms=ms, K=K, kaxis=kaxis, m=mm, m_pad=None, f_n_demag=f_n, n=n, dx=dx, D=D) + h_ext_arr
 
     rhs = damping_rhs_factory(GAMMA, field)
     state = RK45State(dt=dt0)
@@ -86,7 +88,7 @@ def relax(
     converged = False
     for step in range(max_steps):
         if energy_every and step % energy_every == 0:
-            history.append(energies(m, dx, ms, A, K, kaxis, h_ext, f_n)["total"])
+            history.append(energies(m, dx, ms, A, K, kaxis, h_ext, f_n, D)["total"])
         m, t, _ = rk45_step(rhs, m, t, state, tol)
         # |dm/dt| = gamma |m x H| for the damping-only flow (|m| = 1)
         torque = _max_cell_norm(state.k1) / GAMMA
@@ -100,6 +102,6 @@ def relax(
         "rejected": state.rejected,
         "pseudo_time": t,
         "max_torque": torque,
-        "energies": energies(m, dx, ms, A, K, kaxis, h_ext, f_n),
+        "energies": energies(m, dx, ms, A, K, kaxis, h_ext, f_n, D),
         "energy_history": history,
     }

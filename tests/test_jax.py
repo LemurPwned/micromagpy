@@ -20,11 +20,14 @@ def _m(n, seed=0):
     return m / np.linalg.norm(m, axis=-1, keepdims=True)
 
 
+@pytest.mark.parametrize("D", [0.0, 2e-3])
 @pytest.mark.parametrize("n", [(12, 7, 1), (6, 5, 3), (1, 1, 1)])
-def test_field_matches_numba(n):
+def test_field_matches_numba(n, D):
     m = _m(n)
-    ref = h_eff(A, MS, K, (0.3, 0, 1), m, None, compute_demag_tensor(n, DX), n, DX)
-    got = np.asarray(mj.make_field(n, DX, MS, A, K, (0.3, 0, 1))(m))
+    if n[0] > 2:
+        m[0, 0] = m[3, 2] = 0.0  # empty cells: DMI bonds to them are missing
+    ref = h_eff(A, MS, K, (0.3, 0, 1), m, None, compute_demag_tensor(n, DX), n, DX, D=D)
+    got = np.asarray(mj.make_field(n, DX, MS, A, K, (0.3, 0, 1), D=D)(m))
     np.testing.assert_allclose(got, ref, rtol=1e-9, atol=1e-9 * MS)
 
 
@@ -34,8 +37,8 @@ def test_trajectory_matches_simulate(solver):
     m0 = _m(n, 1)
     h = np.array([1e4, 0, 2e4])
     sot = SOT(Hfl=2e3, Hdl=5e3, p=(0, 1, 0))
-    ref = simulate(m0, DX, MS, A, alpha, dt, steps, K=K, h_ext=h, solver=solver, record_every=10, torques=[sot])
-    field = mj.make_field(n, DX, MS, A, K)
+    ref = simulate(m0, DX, MS, A, alpha, dt, steps, K=K, h_ext=h, solver=solver, record_every=10, torques=[sot], D=1e-3)
+    field = mj.make_field(n, DX, MS, A, K, D=1e-3)
     out = mj.run(m0, field, alpha, dt, steps, h_ext=lambda t: h, extra=mj.sot(2e3, 5e3, (0, 1, 0)),
                  solver=solver, record_every=10)
     np.testing.assert_allclose(np.asarray(out["m_avg"]), ref["m_avg"], atol=1e-10)

@@ -178,6 +178,30 @@ be a 3-vector, an array of shape `n + (3,)` or, for `simulate`, a callable
 h_ext = lambda t: np.array([0.0, 0.0, 1e4 * np.sin(2 * np.pi * 5e9 * t)])
 ```
 
+### Interfacial DMI
+
+`D` (J/m²) switches on the interfacial Dzyaloshinskii-Moriya interaction of a
+film with normal z, in `h_eff`, `simulate`, `relax`, `energies` and the JAX
+`make_field`. The sign convention is MuMax3's `Dind`. The energy density
+`D [m_z ∇·m − (m·∇) m_z]` is discretised on nearest-neighbour bonds:
+
+- Inside the magnet the field is the central difference
+  `2D/(mu0 Ms) (∂x m_z, ∂y m_z, −∂x m_x − ∂y m_y)`.
+- At mesh edges and next to empty cells, the missing bonds give the free-edge
+  condition `∂m/∂n = D/(2A) (z × n) × m`.
+- The field is the exact gradient of `energies(...)["dmi"]`.
+
+The edge tilt of a PMA strip converges to Rohart & Thiaville's
+`sin θ = D / 2√(AK)` at first order in the cell size (`tests/test_dmi.py`).
+Use cells well below the DMI length `2A/D`.
+
+```python
+from micromagpy.fields import compute_hdmi
+
+h_dmi = compute_hdmi(D=2e-3, ms=ms, m=m, dx=dx)
+res = relax(m, dx, ms, A=A, K=K, D=2e-3)   # or simulate(..., D=2e-3)
+```
+
 ### Solvers
 
 `simulate(m, dx, ms, A, alpha, dt, steps, ...)` integrates the LLG equation:
@@ -208,7 +232,7 @@ The single steps are also available on their own:
 
 ### Energies and relaxation
 
-`energies` returns the exchange, demag, anisotropy and Zeeman energies (J)
+`energies` returns the exchange, DMI, demag, anisotropy and Zeeman energies (J)
 and their sum. `relax` minimises the energy by integrating the
 precession-free flow `dm/dt = -gamma m x (m x H)` with adaptive steps, until
 `max |m x H| < torque_tol * Ms`.

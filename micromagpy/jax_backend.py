@@ -41,11 +41,12 @@ from .fft import fft_axes, padded_shape  # noqa: E402
 jax.config.update("jax_enable_x64", True)
 
 
-def make_field(n, dx, ms, A, K=0.0, kaxis=(0, 0, 1), demag=True, dtype=jnp.float64) -> Callable:
-    """Return ``h(m)``: demag + exchange + uniaxial anisotropy (A/m), traceable by JAX.
+def make_field(n, dx, ms, A, K=0.0, kaxis=(0, 0, 1), demag=True, dtype=jnp.float64, D=0.0) -> Callable:
+    """Return ``h(m)``: demag + exchange + uniaxial anisotropy + interfacial DMI (A/m), traceable by JAX.
 
     Same discretisation as :func:`micromagpy.fields.h_eff` (Newell tensor,
-    Neumann exchange); ``K`` / ``kaxis`` may be per cell.
+    Neumann exchange, bond DMI of :func:`micromagpy.fields.compute_hdmi`);
+    ``K`` / ``kaxis`` may be per cell.
     """
     n = tuple(int(k) for k in n)
     axes = fft_axes(n)
@@ -70,6 +71,11 @@ def make_field(n, dx, ms, A, K=0.0, kaxis=(0, 0, 1), demag=True, dtype=jnp.float
             + (mp[1:-1, 1:-1, 2:] + mp[1:-1, 1:-1, :-2] - 2 * m) * idx2[2]
         )
         out = cex * lap + (hk * jnp.sum(m * u, -1))[..., None] * u
+        if D:  # missing neighbours (edges, empty cells) contribute nothing
+            m0 = jnp.pad(m, ((1, 1), (1, 1), (0, 0), (0, 0)))
+            gx, gy = m0[2:, 1:-1] - m0[:-2, 1:-1], m0[1:-1, 2:] - m0[1:-1, :-2]
+            cx, cy = D / (MU0 * ms * dx[0]), D / (MU0 * ms * dx[1])
+            out = out + jnp.stack([cx * gx[..., 2], cy * gy[..., 2], -cx * gx[..., 0] - cy * gy[..., 1]], -1)
         if not demag:
             return out
         if not axes:
