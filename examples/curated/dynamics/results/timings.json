@@ -1,0 +1,26 @@
+{
+  "fmr_basic": {
+    "fields": 41,
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "rk45_steps_total": 327954,
+    "samples_per_field": 4000,
+    "seconds": 213.38,
+    "solver": "relax + rk45"
+  },
+  "sto": {
+    "currents": 8,
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "rk45_steps_total": 95992,
+    "seconds": 96.09,
+    "solver": "rk45",
+    "time_per_current_ns": 6.0
+  }
+}

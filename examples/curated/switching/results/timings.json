@@ -1,0 +1,48 @@
+{
+  "p_bit": {
+    "backend": "jax vmap on NVIDIA GB10",
+    "mesh": [
+      4,
+      4,
+      1
+    ],
+    "numba_estimate_s": 73663.6,
+    "seconds": 107.36,
+    "steps": 1000000,
+    "trajectories": 168
+  },
+  "sot_phase_diagram": {
+    "backend": "jax vmap heun float32 on NVIDIA GB10",
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "seconds": 242.04,
+    "simulations": 5000,
+    "steps": 20000
+  },
+  "sot_switching": {
+    "loops": 3,
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "points_per_loop": 40,
+    "rk45_steps_total": 292580,
+    "seconds": 286.65,
+    "solver": "rk45 pulse + relax"
+  },
+  "switching_hysteresis": {
+    "mesh": [
+      10,
+      10,
+      1
+    ],
+    "points": 480,
+    "relax_steps_total": 45101,
+    "seconds": 21.95,
+    "solver": "relax (RK45 damping flow)"
+  }
+}

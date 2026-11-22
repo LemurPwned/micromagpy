@@ -24,6 +24,10 @@ import argparse
 
 import matplotlib.pyplot as plt
 import numpy as np
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from _common import fig_path, timed
 
 from micromagpy.demag import compute_demag_tensor

@@ -117,18 +117,6 @@
     "temperature_K": 50.0,
     "time_per_run_ns": 6.0
   },
-  "fmr_basic": {
-    "fields": 41,
-    "mesh": [
-      16,
-      16,
-      1
-    ],
-    "rk45_steps_total": 327954,
-    "samples_per_field": 4000,
-    "seconds": 213.38,
-    "solver": "relax + rk45"
-  },
   "noise_spectra": {
     "generators": 6,
     "rates_Msamples_per_s": {
@@ -162,29 +150,5 @@
     "seconds": 3.39,
     "solver": "heun",
     "steps": 15000
-  },
-  "sot_switching": {
-    "loops": 3,
-    "mesh": [
-      16,
-      16,
-      1
-    ],
-    "points_per_loop": 40,
-    "rk45_steps_total": 292580,
-    "seconds": 286.65,
-    "solver": "rk45 pulse + relax"
-  },
-  "sto": {
-    "currents": 8,
-    "mesh": [
-      16,
-      16,
-      1
-    ],
-    "rk45_steps_total": 95992,
-    "seconds": 96.09,
-    "solver": "rk45",
-    "time_per_current_ns": 6.0
   }
 }

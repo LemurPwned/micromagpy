@@ -385,16 +385,70 @@ Results are in [`benchmarks/figures/benchmark.json`](https://github.com/LemurPwn
 
 ![benchmark](https://raw.githubusercontent.com/LemurPwned/micromagpy/master/benchmarks/figures/benchmark.png)
 
+### JAX backend (GPU, batched sweeps)
+
+[`micromagpy/jax_backend.py`](https://github.com/LemurPwned/micromagpy/blob/master/micromagpy/jax_backend.py)
+(`pip install "micromagpy[jax]"`, or `jax[cuda13]` for an NVIDIA GPU) runs the
+same discretisation (Newell demag, Neumann exchange, uniaxial anisotropy, SOT,
+thermal field; Heun or RK4) as one compiled `lax.scan`, and batches independent
+runs with `jax.vmap`. It matches `simulate` to 1e-10 (`tests/test_jax.py`).
+
+```python
+import jax, jax.numpy as jnp
+from micromagpy import jax_backend as mj
+
+field = mj.make_field(n, dx, ms, A, K=Ku, kaxis=(0, 0, 1), dtype=jnp.float32)
+sigma = mj.thermal_sigma(dx, ms, alpha, 300.0, dt)
+sweep = jax.jit(jax.vmap(lambda H, key: mj.run(
+    m0, field, alpha, dt, 20_000, h_ext=lambda t: jnp.array([0, 0, 1.0]) * H, sigma=sigma, key=key)["m_avg"]))
+m_avg = sweep(H_values, jax.random.split(jax.random.PRNGKey(0), len(H_values)))
+```
+
+From [`benchmarks/benchmark_jax.py`](https://github.com/LemurPwned/micromagpy/blob/master/benchmarks/benchmark_jax.py)
+(time per Heun step of one simulation, and 64 thermal runs of a 16x16x1 mesh,
+2000 steps each, e.g. a field sweep). Machines: Apple M5 Pro (18 cores),
+NVIDIA DGX Spark (GB10 GPU, 20-core Grace CPU):
+
+| mesh | numba, M5 Pro | numba, Grace | JAX f64, GB10 | JAX f32, GB10 |
+| --- | --- | --- | --- | --- |
+| 100x25x1 | 2.25 ms | 1.24 ms | 0.18 ms | 0.069 ms |
+| 256x256x1 | 7.9 ms | 18.4 ms | 1.41 ms | 0.24 ms |
+| 64x64x16 | 16.3 ms | 24.3 ms | 3.06 ms | 0.73 ms |
+| 512x512x1 | 27.9 ms | 30.9 ms | 7.6 ms | 1.97 ms |
+| 1024x1024x1 | 95.6 ms | 96.3 ms | 35.6 ms | 12.2 ms |
+| 64 x 16x16x1 thermal runs | 221 s (11.5 s in a 1-thread process pool) | 35.5 s | 0.69 s | 0.20 s |
+
+On a CPU the JAX backend ranges from 1.3x slower (1024x1024, float64) to 3x
+faster (small meshes, no per-step Python overhead) than numba for one
+simulation, and is 6-40x faster for batches of small meshes.
+On the GPU, float32 is 3-6x faster than float64 (the GB10 has little FP64
+throughput).
+
+**Small meshes on numba.** Below ~64x64 cells the parallel numba kernels
+spend most of their time synchronising threads (16x16x1: 0.30 ms/step with
+`NUMBA_NUM_THREADS=1`, 1.6 ms/step with 18 threads). For sweeps of small
+meshes, run single-threaded simulations side by side
+(`NUMBA_NUM_THREADS=1 MICROMAGPY_FFT_WORKERS=1` and a process pool), or use
+`jax.vmap`.
+
+![benchmark_jax](https://raw.githubusercontent.com/LemurPwned/micromagpy/master/benchmarks/figures/benchmark_jax.png)
+
 ## Curated examples
 
 [`examples/curated/`](https://github.com/LemurPwned/micromagpy/tree/master/examples/curated)
 holds micromagnetic versions of the
-[cmtj curated examples](https://github.com/LemurPwned/cmtj/tree/master/curated-examples):
-1/f generator spectra, seeded reproducible noise, FMR, a spin-torque
-oscillator, SOT switching loops, thermal noise of PMA / IMA domains with dispersed
-anisotropy at 300 K and 50 K (with animated domain maps and live noise spectra),
-and noise spectrograms. Figures, one page per example and run times are in
-[`examples/curated/results/`](https://github.com/LemurPwned/micromagpy/tree/master/examples/curated/results).
+[cmtj curated examples](https://github.com/LemurPwned/cmtj/tree/master/curated-examples),
+in topic folders with their figures, one page per example and run times in
+each folder's `results/`:
+
+* `noise/`: 1/f generator spectra, seeded reproducible noise, thermal noise of
+  PMA / IMA domains with dispersed anisotropy (animated), noise spectrograms;
+* `dynamics/`: FMR field scan, spin-torque oscillator;
+* `switching/`: field hysteresis, SOT switching loops, SOT switching phase
+  diagram at 300 K and a p-bit (the last two batched with JAX);
+* `transport/`: Rxx / Rxy magnetoresistance sweeps and spin-diode
+  (mixing voltage) field scans (JAX).
+
 The scripts need the `examples` extra (`pip install "micromagpy[examples]"`).
 
 ## Testing
