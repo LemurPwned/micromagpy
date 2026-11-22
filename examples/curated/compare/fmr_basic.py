@@ -3,9 +3,9 @@
 64 x 64 x 1 nm PMA element (mu0 Ms = 1.03 T, Ku = 489 kJ/m^3, alpha = 0.01),
 field 1 degree from the normal scanned +H -> -H. At every field the state is
 relaxed, a 2 kA/m, 50 ps in-plane pulse excites it and the spectrum of m_x
-over 4 ns is taken. The macrospin scan has 100 fields (as cmtj's
-``fmr-basic.py``), the micromagnetic one 41. The macrospin is relaxed by
-5 ns of free precession instead of the energy minimiser.
+over 4 ns is taken. Both scans have 100 fields, as cmtj's ``fmr-basic.py``.
+The macrospin is relaxed by 5 ns of free precession instead of the energy
+minimiser.
 """
 
 import os
@@ -34,7 +34,7 @@ def spectrum(mx, fmax=30e9):  # as dynamics/fmr_basic.py
 
 def main():
     micro = load_micromag("dynamics", "fmr-basic")
-    H = np.linspace(micro["H"][0], micro["H"][-1], 100)
+    H = micro["H"]
     tilt = np.deg2rad(1.0)
     j = macrospin(n, dx, ms, Ku, damping=damping)
     spectra, mz = [], []
@@ -51,12 +51,15 @@ def main():
             spectra.append(y)
             mz.append(log["free_mz"][-1])
     spectra, mz = np.array(spectra), np.array(mz)
+    for label, h, m in (("cmtj", H, mz), ("micromagpy", micro["H"], micro["mz"])):
+        i = np.argmax(m < 0)
+        print(f"{label}: reversal between {h[i - 1] / 1e3:.0f} and {h[i] / 1e3:.0f} kA/m")
 
     hk_eff = 2 * Ku / (MU0 * ms) - ms
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.2), gridspec_kw={"width_ratios": [2, 2, 1]})
     for ax, label, h, ff, s, m in [
-        (axes[0], "cmtj macrospin, 100 fields", H, f, spectra, mz),
-        (axes[1], "micromagpy 16x16 cells, 41 fields", micro["H"], micro["f"], micro["spectra"], micro["mz"]),
+        (axes[0], "cmtj macrospin", H, f, spectra, mz),
+        (axes[1], "micromagpy, 16x16 cells", micro["H"], micro["f"], micro["spectra"], micro["mz"]),
     ]:
         db = 20 * np.log10(s.T / s.max(axis=1) + 1e-12)  # each field to its own peak
         ax.pcolormesh(h / 1e3, ff / 1e9, db, shading="nearest", cmap="magma", vmin=-40, vmax=0)

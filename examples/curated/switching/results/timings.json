@@ -29,9 +29,9 @@
       16,
       1
     ],
-    "points_per_loop": 40,
-    "rk45_steps_total": 292580,
-    "seconds": 286.65,
+    "points_per_loop": 260,
+    "rk45_steps_total": 1873631,
+    "seconds": 3092.82,
     "solver": "rk45 pulse + relax"
   },
   "switching_hysteresis": {

@@ -65,9 +65,9 @@ Wall times from each folder's `results/timings.json`. numba runs: older entries 
 | noise/noise_spectrogram | 16×16×1 | 11 fields × 320 000 Heun steps | numba | 857 s |
 | noise/domain_noise (GIFs) | 32×8×1 | 100 frames, per case | numba | 12–16 s |
 | noise/domain_noise (sweeps) | 32×8×1 | 36 runs × 6 ns, per case | numba | 583–609 s |
-| dynamics/fmr_basic | 16×16×1 | 41 fields, 328k RK45 steps | numba | 213 s |
-| dynamics/sto | 16×16×1 | 8 currents × 6 ns | numba | 96 s |
-| switching/sot_switching | 16×16×1 | 3 loops × 40 pulses | numba | 287 s |
+| dynamics/fmr_basic | 16×16×1 | 100 fields, 800k RK45 steps | numba (1 thread) | 803 s |
+| dynamics/sto | 16×16×1 | 8 currents × 6 ns | numba (1 thread) | 90 s |
+| switching/sot_switching | 16×16×1 | 3 loops × 261 pulses | numba (1 thread) | 3093 s |
 | switching/switching_hysteresis | 10×10×1 | 480 relaxed points | numba (1 thread) | 22 s |
 | switching/p_bit | 4×4×1 | 168 trajectories × 10⁶ steps | JAX f64, GB10 | 107 s (numba est. 7.4×10⁴ s) |
 | switching/sot_phase_diagram | 16×16×1 | 5000 runs × 20 000 steps | JAX f32, GB10 | 242 s (numba est. ~8 h) |

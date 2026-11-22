@@ -3,7 +3,8 @@
 64 x 64 x 1 nm PMA element (Ku = 500 kJ/m^3, alpha = 0.1) with damping-like
 SOT (p = y), in-plane bias H_x. Every point of the current sweep is a 1 ns
 pulse followed by relaxation with the current off (5 ns of damped precession
-for the macrospin, the energy minimiser for the mesh), read out as m_z.
+for the macrospin, the energy minimiser for the mesh), read out as m_z. Both
+sweeps use cmtj's ``cims-hysteresis.py`` step, 2 j_max / 130.
 """
 
 import os
@@ -38,15 +39,15 @@ def loop(hx, fl, sweep):
 def main():
     micro = load_micromag("switching", "sot-switching")
     cases, hdl, jj, k = micro["cases"], micro["hdl"], micro["j"], int(micro["n_init"]) - 1
-    # same sweep, 3x denser for the macrospin
-    dense = np.interp(np.linspace(0, len(hdl) - 1, 3 * len(hdl) - 2), np.arange(len(hdl)), hdl)
-    dk = 3 * k
-    with timed("sot_switching", loops=len(cases), points_per_loop=len(dense), solver="cmtj RK4"):
-        macro = [loop(hx, fl, dense) for hx, fl in cases]
+    with timed("sot_switching", loops=len(cases), points_per_loop=len(hdl), solver="cmtj RK4"):
+        macro = [loop(hx, fl, hdl) for hx, fl in cases]
+    for (hx, fl), a, b in zip(cases, macro, micro["mz"]):
+        sw = [np.round(jj[np.where(np.diff(np.sign(m)) != 0)[0] + 1] / 1e12, 2) for m in (a, b)]
+        print(f"Hx = {hx:+.0f}, Hfl/Hdl = {fl:g}: switching j (1e12 A/m^2) cmtj {sw[0]}, micromagpy {sw[1]}")
 
     fig, axes = plt.subplots(2, len(cases), figsize=(4.3 * len(cases), 6.5), sharex=True, sharey=True)
     for c, (hx, fl) in enumerate(cases):
-        for r, (label, x, mz, k0) in enumerate([("cmtj macrospin", dense / hdl.max() * jj.max(), macro[c], dk),
+        for r, (label, x, mz, k0) in enumerate([("cmtj macrospin", jj, macro[c], k),
                                                 ("micromagpy 16x16", jj, micro["mz"][c], k)]):
             ax = axes[r, c]
             half = k0 + (len(x) - k0) // 2

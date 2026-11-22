@@ -1,6 +1,6 @@
 # Macrospin (cmtj) vs micromagnetics (micromagpy)
 
-Each script here runs [cmtj](https://github.com/LemurPwned/cmtj) on the device of one micromagnetic example and puts the two results side by side. The macrospin is built with `_common.macrospin`: same Ms, Ku, damping and volume, with the element's demag factors (N_xx, N_yy, N_zz) from micromagpy's demag tensor rather than a thin-film tensor. Both models then share the same anisotropy and shape, and every difference comes from exchange-coupled, non-uniform magnetisation. The drive protocol is the micromagnetic example's. The macrospin scans are as dense as or denser than the originals in `cmtj/curated-examples`, while the micromagnetic scans are coarser.
+Each script here runs [cmtj](https://github.com/LemurPwned/cmtj) on the device of one micromagnetic example and puts the two results side by side. The macrospin is built with `_common.macrospin`: same Ms, Ku, damping and volume, with the element's demag factors (N_xx, N_yy, N_zz) from micromagpy's demag tensor rather than a thin-film tensor. Both models then share the same anisotropy and shape, and every difference comes from exchange-coupled, non-uniform magnetisation. The drive protocol is the micromagnetic example's. FMR and the SOT loops use cmtj's sampling in both models (100 fields; 2·j_max/130 current steps). The thermal and batched maps use a denser grid for the macrospin.
 
 For one cell (no exchange, no demag) the two codes agree to 5 decimals with field, anisotropy, SOT and STT, so the comparisons below test the physics, not conventions.
 
@@ -14,11 +14,15 @@ python examples/curated/compare/switching_hysteresis.py   # -> compare/results/s
 
 ## Field-driven hysteresis ([`switching_hysteresis.py`](switching_hysteresis.py))
 
+**Timing:** cmtj 10.9 s · micromagpy 22 s (numba, 1 thread) · 480 fields each
+
 ![switching-hysteresis](results/switching-hysteresis.png)
 
 The 30 nm disk is nearly a macrospin. The macrospin reverses at 15.2 kA/m, close to the Stoner-Wohlfarth H_k = 15.5 kA/m. The 10×10 mesh reverses 4 % earlier, at 14.6 kA/m, through a slightly non-uniform (buckling) state.
 
 ## Rxx / Rxy sweeps ([`magnetoresistance.py`](magnetoresistance.py))
+
+**Timing:** cmtj 9.3 s · micromagpy 89 s (numba, 1 thread) · 400 fields each
 
 ![magnetoresistance](results/magnetoresistance.png)
 
@@ -26,11 +30,15 @@ The two models are practically identical, including the switching fields and the
 
 ## Pulse-excited FMR ([`fmr_basic.py`](fmr_basic.py))
 
+**Timing:** cmtj 1.8 s · micromagpy 803 s (numba, 1 thread) · 100 fields each
+
 ![fmr-basic](results/fmr-basic.png)
 
-Both show the same uniform-mode line, and both sit above the thin-film Kittel law by the same amount, because the 64 nm element's in-plane demag is not zero. The mesh reverses earlier on the −H branch (≈ −150 vs −190 kA/m), so its line jumps to the reversed branch sooner. A non-uniform reversal path lowers the switching field, as in the hysteresis loop.
+Both show the same uniform-mode line, and both sit above the thin-film Kittel law by the same amount, because the 64 nm element's in-plane demag is not zero. The mesh reverses one field step earlier on the −H branch: between −163 and −177 kA/m, against −177 to −191 kA/m for the macrospin. The mesh also shows a weak higher-order mode near 28 GHz around ±400 kA/m, which a macrospin cannot have.
 
 ## Spin-transfer oscillator ([`sto.py`](sto.py))
+
+**Timing:** cmtj 0.7 s (25 currents) · micromagpy 90 s (numba, 1 thread, 8 currents)
 
 ![sto](results/sto.png)
 
@@ -38,11 +46,15 @@ The macrospin follows the analytic f = γ₀ a_J P / 4πα over the whole range.
 
 ## SOT switching loops ([`sot_switching.py`](sot_switching.py))
 
+**Timing:** cmtj 13 s · micromagpy 3093 s (numba, 1 thread) · 3 loops × 261 pulses each
+
 ![sot-switching](results/sot-switching.png)
 
-At T = 0 the switching polarity and thresholds agree within one sweep step (~10 %): about 1.0 × 10¹² A/m² for the macrospin and 0.9 × 10¹² A/m² for the mesh. The field-like torque (H_fl/H_dl = −1.2) lowers both thresholds by a similar amount.
+At T = 0 the switching polarity and thresholds agree within 3 % (one sweep step): ±1.00 × 10¹² A/m² for the macrospin and ±0.97 × 10¹² A/m² for the mesh. The field-like torque (H_fl/H_dl = −1.2) lowers both to ±0.60 × 10¹² A/m². The mesh's m_z then flips back and forth on successive pulses between 0.60 and 0.66 × 10¹² A/m² before switching settles; the macrospin switches cleanly once.
 
 ## SOT phase diagram at 300 K ([`sot_phase_diagram.py`](sot_phase_diagram.py))
+
+**Timing:** cmtj 42 s (20 000 runs, 18 processes) · micromagpy 242 s (JAX float32, GB10 GPU, 5000 runs)
 
 ![sot-phase-diagram](results/sot-phase-diagram.png)
 
@@ -50,11 +62,15 @@ Here the models differ most. At |H_x| = 60 kA/m the macrospin needs ≳ 0.6 × 1
 
 ## p-bit ([`p_bit.py`](p_bit.py))
 
+**Timing:** cmtj 7.3 s (18 processes) · micromagpy 107 s (JAX float64, GB10 GPU) · 168 runs × 100 ns each
+
 ![p-bit](results/p-bit.png)
 
 Both have the same macrospin barrier, Δ = 4 kT. The 16-cell mesh hops faster (mean dwell 3.2 vs 5.3 ns): with internal degrees of freedom the reversal does not have to cross the full coherent-rotation barrier. Its moment is reduced to m_s ≈ 0.74, so the sigmoid saturates lower. The macrospin's time average also stays below tanh(μ₀MₛVH/kT), because it fluctuates within each well.
 
 ## Spin diode ([`spin_diode.py`](spin_diode.py))
+
+**Timing:** cmtj 9.2 s (1000 runs, 18 processes) · micromagpy 1409 s (JAX float32, GB10 GPU, 600 runs)
 
 ![spin-diode](results/spin-diode.png)
 
@@ -62,15 +78,15 @@ The lines are identical in shape, amplitude and position: a saturated 128 nm ele
 
 ## Timings
 
-The cmtj macrospin runs took seconds on a Mac M5 Pro, with a pool of 18 processes for the thermal and batched scans. The micromagnetic runs are listed in the [curated README](../README.md#timings).
+All on a Mac M5 Pro unless marked GB10. cmtj uses one process, or a pool of 18 for the thermal and batched scans. The micromagnetic numba runs use one thread each. The GPU runs are on the NVIDIA GB10 (DGX Spark).
 
 | Comparison | Macrospin work | cmtj | micromagpy |
 |---|---|---|---|
 | switching_hysteresis | 480 fields × 10 ns | 10.9 s | 22 s (numba) |
 | magnetoresistance | 400 fields × 10 ns | 9.3 s | 89 s (numba) |
-| fmr_basic | 100 fields × 9 ns | 2.0 s | 213 s (numba, 41 fields) |
-| sto | 25 currents × 6 ns | 0.9 s | 96 s (numba, 8 currents) |
-| sot_switching | 3 × 151 pulses | 6.9 s | 287 s (numba, 3 × 40) |
+| fmr_basic | 100 fields × 9 ns | 1.8 s | 803 s (numba) |
+| sto | 25 currents × 6 ns | 0.7 s | 90 s (numba, 8 currents) |
+| sot_switching | 3 × 261 pulses | 13 s | 3093 s (numba, same sampling) |
 | sot_phase_diagram | 20 000 runs × 2 ns, 300 K | 42 s | 242 s (JAX GPU, 5000 runs) |
 | p_bit | 168 runs × 100 ns, 300 K | 7.3 s | 107 s (JAX GPU) |
 | spin_diode | 1000 runs × 20 ns | 9.2 s | 1409 s (JAX GPU, 600 runs) |

@@ -46,7 +46,7 @@ def spectrum(mx, dt, fmax=30e9):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--fields", type=int, default=41)
+    parser.add_argument("--fields", type=int, default=100)
     parser.add_argument("--hmax", type=float, default=700e3)
     parser.add_argument("--time", type=float, default=4e-9)
     args = parser.parse_args()

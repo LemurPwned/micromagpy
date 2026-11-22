@@ -58,7 +58,7 @@ def loop(f_demag, hx, fl_ratio, hdl_max, points, pulse):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--points", type=int, default=40)
+    parser.add_argument("--points", type=int, default=260)
     parser.add_argument("--hdl-max", type=float, default=2.0e5, help="max damping-like field (A/m)")
     parser.add_argument("--pulse", type=float, default=1e-9)
     args = parser.parse_args()

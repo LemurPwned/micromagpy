@@ -1,7 +1,7 @@
 {
   "fmr_basic": {
     "fields": 100,
-    "seconds": 2.03,
+    "seconds": 1.81,
     "solver": "cmtj RK4"
   },
   "magnetoresistance": {
@@ -23,8 +23,8 @@
   },
   "sot_switching": {
     "loops": 3,
-    "points_per_loop": 151,
-    "seconds": 6.92,
+    "points_per_loop": 326,
+    "seconds": 13.03,
     "solver": "cmtj RK4"
   },
   "spin_diode": {
@@ -35,7 +35,7 @@
   },
   "sto": {
     "currents": 25,
-    "seconds": 0.86,
+    "seconds": 0.66,
     "solver": "cmtj RK4"
   },
   "switching_hysteresis": {

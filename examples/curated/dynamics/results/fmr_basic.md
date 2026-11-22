@@ -1,8 +1,8 @@
 # FMR field scan of a PMA element
 
-Script: [`../fmr_basic.py`](../fmr_basic.py) · cmtj counterpart: `fmr-basic.py` · wall time 213 s
+Script: [`../fmr_basic.py`](../fmr_basic.py) · cmtj counterpart: `fmr-basic.py` · wall time 803 s (numba, 1 thread, Mac M5 Pro)
 
-The element is 64×64×1 nm with μ0Ms = 1.03 T, Ku = 489 kJ/m³ and α = 0.01, using the free-layer parameters of the cmtj example. The out-of-plane field is scanned from +700 to −700 kA/m in 41 steps.
+The element is 64×64×1 nm with μ0Ms = 1.03 T, Ku = 489 kJ/m³ and α = 0.01, using the free-layer parameters of the cmtj example. The out-of-plane field is scanned from +700 to −700 kA/m in 100 steps, the same sampling as cmtj.
 
 At each field:
 1. the state is relaxed with the energy minimiser, starting from the previous state so the hysteresis is kept;
@@ -12,7 +12,7 @@ At each field:
 ![fmr](fmr-basic.png)
 
 What the scan shows:
-- **Branches:** a V-shaped Kittel branch, then the metastable +z branch softening towards 0 GHz before the element switches at about −150 kA/m.
+- **Branches:** a V-shaped Kittel branch, then the metastable +z branch softening towards 0 GHz before the element switches between −163 and −177 kA/m.
 - **Kittel offset:** the line sits above the thin-film estimate because the finite element has N_zz < 1.
 - **Solver choice:** fixed-step Euler is unstable here (4 nm cells at α = 0.01), so the scan uses relax + RK45.
 - **Difference from cmtj:** cmtj's example has three coupled layers; micromagpy has no interlayer coupling, so this simulates the free layer only.
