@@ -376,6 +376,31 @@ res = simulate(m, dx, ms, 1.3e-11, alpha, 1e-12, 100, K=8e5, h_ext=(2e4, 0, 0),
                torques=[sot, stt], solver="rk45")
 ```
 
+### Multilayers and interlayer exchange coupling
+
+```python
+import jax.numpy as jnp
+from micromagpy.stack import Ellipse, Layer, Spacer, Stack
+
+pillar = Ellipse(64e-9, 64e-9)                       # or Bar(lx, ly); centred, lengths in m
+saf = Stack([Layer(pillar, 1.0e-9, ms=8e5, A=1.5e-11, K=9e5),
+             Spacer(0.8e-9, J1=-1e-3, J2=0.0),         # IEC, J/m^2 (cmtj convention)
+             Layer(pillar, 1.2e-9, ms=9e5, A=1.5e-11, K=8e5)], cell=(4e-9, 4e-9))
+m = saf.relax(saf.uniform([(0, 0, 1), (0, 0, -1)]), h_ext=(0, 0, 5e4))["m"]   # (layers, nx, ny, 3)
+out = saf.run(m, dt=1e-12, steps=5000, h_ext=lambda t: jnp.array([1e4, 0, 5e4]), solver="rk45")
+out["m_avg"]                                          # (records, layers, 3)
+```
+
+Each layer is one cell thick, and all layers share the x/y grid. The demag
+includes every layer's field on every other layer: Newell tensors for boxes of
+different thickness at the real gaps, with one FFT per layer and step. IEC
+couples the layers on either side of a spacer, cell by cell:
+H = (J1 + 2 J2 m·m′) m′ / (μ0 Ms t). The constructor precomputes everything,
+and J1, J2, fields, torques and temperature are arguments, so sweeps `jit` and
+`vmap` without recompiling. Damping, thermal field and SOT amplitudes can
+differ per layer. `Stack(..., interlayer_demag=False)` drops the interlayer
+dipolar field, as macrospin codes such as cmtj do.
+
 ### Analysis helpers
 
 ```python
@@ -499,9 +524,11 @@ each folder's `results/`:
 
 * `noise/`: 1/f generator spectra, seeded reproducible noise, thermal noise of
   PMA / IMA domains with dispersed anisotropy (animated), noise spectrograms;
-* `dynamics/`: FMR field scan, spin-torque oscillator;
+* `dynamics/`: FMR field scan, spin-torque oscillator, IEC-coupled
+  oscillations of two layers;
 * `switching/`: field hysteresis, SOT switching loops, SOT switching phase
-  diagram at 300 K and a p-bit (the last two batched with JAX);
+  diagram at 300 K, a p-bit (the last two batched with JAX), Co/Ru/Co SAF
+  loops and Co/Pt/Co out-of-plane loops (multilayer `Stack` with IEC);
 * `transport/`: Rxx / Rxy magnetoresistance sweeps and spin-diode
   (mixing voltage) field scans (JAX).
 

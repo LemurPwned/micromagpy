@@ -128,3 +128,43 @@ def compute_trivial_tensor(n: tuple) -> np.ndarray:
     if axes:
         shape[axes[-1]] = shape[axes[-1]] // 2 + 1
     return np.zeros(shape + [6], dtype=np.complex128)
+
+
+def compute_layer_pair_tensors_real(n_xy: tuple, dx: tuple, thickness, z_center, shape: tuple = None) -> np.ndarray:
+    """Real-space demag tensors between single-cell-thick layers on one x/y grid.
+
+    Layer ``i`` is a sheet of cells ``dx[0] x dx[1] x thickness[i]`` centred at
+    height ``z_center[i]``. ``N[i, j]`` gives the field averaged over a cell of
+    layer ``i`` from a uniformly magnetised cell of layer ``j`` (offset target -
+    source), on the padded x/y grid in FFT order, components (xx, xy, xz, yy, yz, zz).
+    Along x/y the 64-term Newell sum is the usual second difference; along z it
+    is the sum over the two corners of each box,
+    ``sum_{u,v=+-1} u v F(dz + u t_i / 2 - v t_j / 2)``, which reduces to the
+    second difference for equal thicknesses. ``N[i, i]`` is the single-layer tensor
+    and ``V_i N[i, j] = V_j N[j, i]^T`` (reciprocity).
+    """
+    nx, ny = (int(k) for k in n_xy)
+    thickness, z_center = np.asarray(thickness, float), np.asarray(z_center, float)
+    L = len(thickness)
+    scale = max(float(dx[0]), float(dx[1]), float(thickness.max()))
+    d0, d1 = dx[0] / scale, dx[1] / scale
+    t, zc = thickness / scale, z_center / scale
+    if shape is None:
+        shape = padded_shape((nx, ny, 1))[:2]
+    out = np.zeros((L, L) + tuple(shape) + (6,), dtype=DTYPE)
+    ix = np.ix_(_wrap_index(nx, shape[0]), _wrap_index(ny, shape[1]))
+    xs = np.arange(-nx, nx + 1) * d0
+    ys = np.arange(-ny, ny + 1) * d1
+    uv = ((1, 1), (1, -1), (-1, 1), (-1, -1))
+    for i in range(L):
+        for j in range(L):
+            zs = np.array([zc[i] - zc[j] + u * t[i] / 2 - v * t[j] / 2 for u, v in uv])
+            w = np.array([u * v for u, v in uv], float)
+            coord = (xs[:, None, None], ys[None, :, None], zs[None, None, :])
+            norm = -1.0 / (4.0 * pi * d0 * d1 * t[i])
+            for c, (use_g, perm) in enumerate(_COMPONENTS):
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    nodes = (g if use_g else f)(coord[perm[0]], coord[perm[1]], coord[perm[2]])
+                nodes = _second_difference(_second_difference(nodes, 0), 1) @ w
+                out[i, j, ..., c][ix] = nodes * norm
+    return out

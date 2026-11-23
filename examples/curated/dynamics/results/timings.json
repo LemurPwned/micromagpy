@@ -12,6 +12,18 @@
     "seconds": 155.66,
     "solver": "jax relax + rk45"
   },
+  "iec_coupling": {
+    "backend": "jax float64 on cpu",
+    "mesh": [
+      2,
+      16,
+      16
+    ],
+    "rk45_steps_total": 119205,
+    "seconds": 111.59,
+    "solver": "jax rk45 (stack)",
+    "steps": 30000
+  },
   "sto": {
     "backend": "jax float64 on NVIDIA GB10",
     "currents": 25,

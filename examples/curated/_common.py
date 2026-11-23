@@ -102,6 +102,41 @@ def macrospin(n, dx, ms, K, kaxis=(0, 0, 1), damping=0.01, mask=None, m0=(0, 0, 
     return j
 
 
+def stack_demag_factors(stack):
+    """Per layer (N_xx, N_yy, N_zz): the layer's own cell-averaged demag field for uniform m."""
+    from micromagpy.stack import Layer, Stack
+
+    out = []
+    for layer, mask in zip(stack.layers, stack.masks):
+        one = Stack([Layer(layer.shape, layer.thickness, ms=1.0)], stack.cell)
+        out.append([float(-np.asarray(one.field()(one.uniform(np.eye(3)[c])))[0][mask, c].mean()) for c in range(3)])
+    return out
+
+
+def macro_stack(stack, m0s, ids=None):
+    """cmtj junction with one macrospin per stack layer: same Ms, K, axis, damping, thickness, area,
+    the layer's own demag factors (no interlayer dipolar field) and the spacers' J1 / J2."""
+    from cmtj import CVector, Junction, Layer, constantDriver
+
+    from micromagpy.config import MU0
+
+    ids = ids or [f"l{k}" for k in range(stack.n_layers)]
+    layers = []
+    for lid, layer, mask, N, m0 in zip(ids, stack.layers, stack.masks, stack_demag_factors(stack), m0s):
+        m0 = np.asarray(m0, float) / np.linalg.norm(m0)
+        layers.append(Layer(lid, CVector(*m0), CVector(*np.asarray(layer.kaxis, float)), layer.ms * MU0, layer.thickness,
+                            int(mask.sum()) * stack.cell[0] * stack.cell[1],
+                            [CVector(N[0], 0, 0), CVector(0, N[1], 0), CVector(0, 0, N[2])], damping=layer.alpha))
+    j = Junction(layers)
+    for lid, layer in zip(ids, stack.layers):
+        j.setLayerAnisotropyDriver(lid, constantDriver(layer.K))
+    for k, sp in enumerate(stack.spacers):
+        j.setIECDriver(ids[k], ids[k + 1], constantDriver(sp.J1))
+        if sp.J2:
+            j.setQuadIECDriver(ids[k], ids[k + 1], constantDriver(sp.J2))
+    return j
+
+
 def pmap(fn, items):
     """Map ``fn`` over ``items`` with a process pool (fn must be a module-level function)."""
     import multiprocessing

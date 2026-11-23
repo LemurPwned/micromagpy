@@ -1,8 +1,20 @@
 {
+  "ahe_loops": {
+    "points": 60,
+    "runs": 8,
+    "seconds": 10.81,
+    "solver": "cmtj RK4 15 ns/point"
+  },
   "fmr_basic": {
     "fields": 100,
     "seconds": 1.81,
     "solver": "cmtj RK4"
+  },
+  "iec_coupling": {
+    "runs": 2,
+    "seconds": 0.49,
+    "solver": "cmtj RK4",
+    "time_ns": 29.999999999999996
   },
   "magnetoresistance": {
     "points": 400,
@@ -14,6 +26,12 @@
     "solver": "cmtj Heun, process pool",
     "steps": 1000000,
     "trajectories": 168
+  },
+  "saf_hysteresis": {
+    "points": 240,
+    "runs": 2,
+    "seconds": 3.42,
+    "solver": "cmtj Smit-Beljers relax_field_path"
   },
   "sot_phase_diagram": {
     "seconds": 7.49,

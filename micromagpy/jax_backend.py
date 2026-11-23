@@ -99,9 +99,11 @@ def _torque(p, coefficients) -> Callable:
     p = p / jnp.linalg.norm(p, axis=-1, keepdims=True)
 
     def extra(m, t, alpha, pref):
-        afl, adl = coefficients(m, t, alpha)
+        afl, adl = (jnp.asarray(a) for a in coefficients(m, t, alpha))
+        # per-cell amplitudes (shape n) get a component axis; per-layer ones are already (layers, 1, 1, 1)
+        afl, adl = (a if a.ndim == m.ndim else a[..., None] for a in (afl, adl))
         q = jnp.cross(m, jnp.broadcast_to(p, m.shape))
-        return -pref * (jnp.asarray(afl)[..., None] * q + jnp.asarray(adl)[..., None] * jnp.cross(m, q))
+        return -pref * (afl * q + adl * jnp.cross(m, q))
 
     return extra
 
@@ -251,7 +253,9 @@ def run(
     :param field: ``field(m)`` from :func:`make_field`.
     :param h_ext: traceable ``h_ext(t)`` (A/m), broadcastable to ``m``.
     :param extra: torque term ``extra(m, t, alpha, pref)`` (e.g. :func:`sot`).
-    :param sigma: thermal field std (A/m, see :func:`thermal_sigma`); Heun only.
+    :param alpha: damping, a number or an array broadcastable to ``m`` (per layer).
+    :param sigma: thermal field std (A/m, see :func:`thermal_sigma`), a number or an
+        array broadcastable to ``m``; Heun only.
     :param noise: field noise sources ``(state0, step)``, e.g. from
         :func:`coloured_noise`; advanced once per step, field held over the step.
     :param solver: ``"heun"`` (stochastic Heun, Stratonovich), ``"rk4"`` or
@@ -265,7 +269,8 @@ def run(
     """
     if solver not in ("heun", "rk4", "rk45"):
         raise ValueError("solver must be 'heun', 'rk4' or 'rk45'")
-    if sigma and solver != "heun":
+    thermal = not (np.isscalar(sigma) and sigma == 0)
+    if thermal and solver != "heun":
         raise ValueError("Use solver='heun' with thermal noise")
     m0 = jnp.asarray(m0)
     m0 = _normalize(m0)
@@ -297,7 +302,7 @@ def run(
         m, key, hdt, nacc, ns = carry
         t = (i * dt).astype(m0.dtype)
         hth = 0.0
-        if sigma:
+        if thermal:
             key, sub = jax.random.split(key)
             hth = sigma * jax.random.normal(sub, m.shape, m.dtype) * mag
         if noise:

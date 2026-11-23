@@ -76,6 +76,34 @@ Both have the same macrospin barrier, Δ = 4 kT. The 16-cell mesh hops faster (m
 
 The lines are identical in shape, amplitude and position: a saturated 128 nm element precesses uniformly at these drive levels. The ~10 kA/m offset from the film Kittel law is reproduced by the macrospin with the element's demag factors, which confirms that it is shape anisotropy.
 
+## Multilayers with IEC
+
+These three use `micromagpy.stack.Stack`, which holds shaped layers with in-plane exchange, anisotropy and demag, separated by spacers with bilinear (J1) and biquadratic (J2) IEC. The demag includes the layers' dipolar fields on each other. The macrospin (`_common.macro_stack`) gives each layer its own demag factors and the same J1 / J2 (`setIECDriver` / `setQuadIECDriver`). cmtj has no dipolar coupling between layers, so every stack example also runs with `Stack(..., interlayer_demag=False)`.
+
+### IEC-coupled oscillations ([`iec_coupling.py`](iec_coupling.py))
+
+**Timing:** cmtj 0.4 s (2 runs) · micromagpy JAX 112 s (Mac CPU) · 30 ns, 48 nm disks
+
+![iec-coupling](results/iec-coupling.png)
+
+Without the interlayer dipolar field, the mesh matches the matched macrospin: over the last 15 ns the mean angle between the layers is 87.8° against 87.7°, and the final angles agree within 0.1°. The interlayer dipolar field lowers the mean angle to 68°. The thin-film macrospin from cmtj's example (82.6°) differs from both, because its thin-film demag (N_zz = 1, no in-plane factors) is not the disks' (N_zz = 0.92 / 0.85).
+
+### Co/Ru/Co SAF hysteresis ([`saf_hysteresis.py`](saf_hysteresis.py))
+
+**Timing:** cmtj Smit-Beljers `relax_field_path` 3.4 s (2 runs) · micromagpy JAX 1046 s (Mac CPU) · 3 angles × 80 fields
+
+![saf-hysteresis](results/saf-hysteresis.png)
+
+Without the interlayer dipolar field, the 160 nm disk follows cmtj's static Smit-Beljers loops. For |H| < 70 kA/m the median difference in the interlayer angle is 2.6°, and both saturate near the IEC estimate of 78 kA/m. Close to saturation the mesh's angle stays at 10–20°, from edge non-uniformity. With the interlayer dipolar field, the edge fields favour antiparallel alignment, so the layers are still 75° apart at 80 kA/m. The film and disk demag factors give the same Smit-Beljers loop, because the magnetisation stays in-plane and the disk is isotropic in-plane. `relax_field_path` is newer than cmtj 1.15 on PyPI. The script loads it from a cmtj checkout (`CMTJ_SRC`, default `../cmtj`).
+
+### Co/Pt/Co out-of-plane loops ([`ahe_loops.py`](ahe_loops.py))
+
+**Timing:** cmtj 10.8 s (8 runs, 15 ns per field) · micromagpy JAX 39 s (Mac CPU) · 4 samples × 60 fields
+
+![ahe-loops](results/ahe-loops.png)
+
+The 64 nm squares follow the macrospin with the squares' demag factors, including the switching fields. The largest polar-angle difference is one field step (38 kA/m) at a switching point: 25° or less across all four samples. The thin-film macrospin switches at different fields, because its perpendicular demag (N_zz = 1) is larger than the square's. cmtj's example uses SOT layers without a current driver, so their torques are zero. Both sides leave SOT out.
+
 ## Timings
 
 All on a Mac M5 Pro unless marked GB10. cmtj uses one process, or a pool of 18 for the thermal and batched scans. micromagpy runs use the JAX backend, float64, on the Mac CPU unless marked GB10; the numba times (one thread) are kept for reference. The GPU runs are on the NVIDIA GB10 (DGX Spark).
