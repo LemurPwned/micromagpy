@@ -525,7 +525,8 @@ each folder's `results/`:
 * `noise/`: 1/f generator spectra, seeded reproducible noise, thermal noise of
   PMA / IMA domains with dispersed anisotropy (animated), noise spectrograms;
 * `dynamics/`: FMR field scan, spin-torque oscillator, IEC-coupled
-  oscillations of two layers;
+  oscillations of two layers, IEC synchronising two PMA layers with
+  different Ku;
 * `switching/`: field hysteresis, SOT switching loops, SOT switching phase
   diagram at 300 K, a p-bit (the last two batched with JAX), Co/Ru/Co SAF
   loops and Co/Pt/Co out-of-plane loops (multilayer `Stack` with IEC);

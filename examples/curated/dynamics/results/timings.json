@@ -24,6 +24,18 @@
     "solver": "jax rk45 (stack)",
     "steps": 30000
   },
+  "iec_sync": {
+    "backend": "jax float64 on cpu",
+    "mesh": [
+      2,
+      8,
+      8
+    ],
+    "runs": 27,
+    "seconds": 39.08,
+    "solver": "jax rk45 (stack, vmap)",
+    "steps": 5000
+  },
   "sto": {
     "backend": "jax float64 on NVIDIA GB10",
     "currents": 25,
