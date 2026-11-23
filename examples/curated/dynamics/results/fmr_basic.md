@@ -1,6 +1,6 @@
 # FMR field scan of a PMA element
 
-Script: [`../fmr_basic.py`](../fmr_basic.py) · cmtj counterpart: `fmr-basic.py` · wall time 803 s (numba, 1 thread, Mac M5 Pro)
+Script: [`../fmr_basic.py`](../fmr_basic.py) · cmtj counterpart: `fmr-basic.py` · wall time JAX 156 s (Mac CPU) / 286 s (GB10), numba 803 s
 
 The element is 64×64×1 nm with μ0Ms = 1.03 T, Ku = 489 kJ/m³ and α = 0.01, using the free-layer parameters of the cmtj example. The out-of-plane field is scanned from +700 to −700 kA/m in 100 steps, the same sampling as cmtj.
 

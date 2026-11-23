@@ -1,6 +1,6 @@
 # Field-driven hysteresis loop
 
-Script: [`../switching_hysteresis.py`](../switching_hysteresis.py) · cmtj counterpart: `switching-hysteresis.py` · wall time 22 s (numba, 1 thread)
+Script: [`../switching_hysteresis.py`](../switching_hysteresis.py) · cmtj counterpart: `switching-hysteresis.py` · wall time JAX 4.0 s (Mac CPU) / 14.5 s (GB10), numba 22 s
 
 The element is cmtj's free layer resolved on a mesh: a 30 nm disk, 2.1 nm thick, on 3 nm cells (Ms = 1.03 T, Ku = 8 kJ/m³ along x), with full demag and exchange. The field along the easy axis is swept 0 → −70 → +70 → 0 kA/m in 480 points with a 100 A/m transverse bias. Each point is relaxed with the energy minimiser, starting from the previous state, so the metastable branch is kept.
 

@@ -1,6 +1,6 @@
 # Rxx / Rxy magnetoresistance sweeps
 
-Script: [`../magnetoresistance.py`](../magnetoresistance.py) · cmtj counterpart: `harmonic-hall.py` · wall time 89 s (numba, 1 thread)
+Script: [`../magnetoresistance.py`](../magnetoresistance.py) · cmtj counterpart: `harmonic-hall.py` · wall time JAX 71 s (Mac CPU) / 42 s (GB10), numba 89 s
 
 The material and resistance model are cmtj's Ta/CoFeB Hall bar: Ms = 0.525 T, Ku = 154 kJ/m³, and Kim's formula with AMR = −0.053 Ω, SMR = −0.464 Ω, AHE = −5.71 Ω. Here it is a 128×128×1.45 nm element on 4 nm cells. The field is tilted 2° out of the plane (θ = 92°) at φ = 1° or 45°. It is swept −600 → +600 → −600 kA/m, and every point is relaxed from the previous state. The resistances use cell averages of m_x², m_y², m_x m_y and m_z.
 

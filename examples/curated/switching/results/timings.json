@@ -23,18 +23,20 @@
     "steps": 20000
   },
   "sot_switching": {
+    "backend": "jax float64 on cpu",
     "loops": 3,
     "mesh": [
       16,
       16,
       1
     ],
-    "points_per_loop": 260,
+    "points_per_loop": 326,
     "rk45_steps_total": 1873631,
-    "seconds": 3092.82,
-    "solver": "rk45 pulse + relax"
+    "seconds": 548.3,
+    "solver": "jax rk45 pulse + relax (vmap)"
   },
   "switching_hysteresis": {
+    "backend": "jax float64 on cpu",
     "mesh": [
       10,
       10,
@@ -42,7 +44,7 @@
     ],
     "points": 480,
     "relax_steps_total": 45101,
-    "seconds": 21.95,
-    "solver": "relax (RK45 damping flow)"
+    "seconds": 3.95,
+    "solver": "jax relax (RK45 damping flow)"
   }
 }

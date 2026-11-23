@@ -68,3 +68,45 @@ def test_float32_with_time_dependent_drive():
     out = mj.run(m0, field, 0.05, 1e-13, 20, h_ext=lambda t: jnp.array([1e4, 0, 0]) * jnp.sin(1e10 * t),
                  extra=mj.sot(lambda t: 1e3 * t / 1e-12, 2e3, (0, 1, 0)), solver="rk4")
     assert out["m"].dtype == jnp.float32
+
+
+def test_stt_matches_numba():
+    from micromagpy.torques import STT
+
+    n, alpha = (5, 4, 1), 0.02
+    m = _m(n, 3)
+    for kw in (dict(polarisation=0.6, spacer_lambda=1.5, beta=0.2), dict(polarisation=0.4, alternative=True, kappa=0.7)):
+        ref = STT(3e10, (0, 1, 1), 2e-9, MS, **kw).rhs(m, 0.0, alpha, 2.21e5)
+        got = mj.stt(3e10, (0, 1, 1), 2e-9, MS, **kw)(jax.numpy.asarray(m), 0.0, alpha, 2.21e5 / (1 + alpha**2))
+        np.testing.assert_allclose(np.asarray(got), ref, rtol=1e-12, atol=1e-12 * np.abs(ref).max())
+
+
+def test_rk45_matches_simulate():
+    from micromagpy.torques import STT
+
+    n, dt, steps, alpha = (8, 6, 1), 1e-12, 60, 0.02
+    m0 = _m(n, 2)
+    h = np.array([1e4, 0, 2e4])
+    torques = [SOT(Hfl=2e3, Hdl=5e3, p=(0, 1, 0)), STT(2e10, (0, 0, 1), DX[2], MS, polarisation=0.5)]
+    ref = simulate(m0, DX, MS, A, alpha, dt, steps, K=K, h_ext=h, solver="rk45", tol=1e-6, record_every=5,
+                   torques=torques, D=1e-3)
+    sot, stt = mj.sot(2e3, 5e3, (0, 1, 0)), mj.stt(2e10, (0, 0, 1), DX[2], MS, polarisation=0.5)
+    out = mj.run(m0, mj.make_field(n, DX, MS, A, K, D=1e-3), alpha, dt, steps, h_ext=lambda t: h,
+                 extra=lambda m, t, a, p: sot(m, t, a, p) + stt(m, t, a, p), solver="rk45", tol=1e-6, record_every=5)
+    assert int(out["rk45_steps"]) == ref["rk45_steps"]
+    np.testing.assert_allclose(np.asarray(out["m_avg"]), ref["m_avg"], atol=1e-9)
+    np.testing.assert_allclose(np.asarray(out["m"]), ref["m"], atol=1e-9)
+
+
+def test_relax_matches_numba():
+    from micromagpy.energy import relax
+
+    n = (10, 8, 1)
+    m0 = _m(n, 4)
+    m0[0, 0] = 0.0  # an empty cell
+    h = (2e4, 0, 1e4)
+    ref = relax(m0, DX, MS, A=A, K=K, h_ext=h, torque_tol=1e-4, tol=1e-6, D=1e-3)
+    got = mj.relax(m0, mj.make_field(n, DX, MS, A, K, D=1e-3), MS, h_ext=h, torque_tol=1e-4, tol=1e-6)
+    assert bool(got["converged"]) and ref["converged"]
+    assert int(got["steps"]) == ref["steps"]
+    np.testing.assert_allclose(np.asarray(got["m"]), ref["m"], atol=1e-9)

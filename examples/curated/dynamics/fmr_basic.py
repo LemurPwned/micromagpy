@@ -13,19 +13,19 @@ f = gamma0 / 2pi |H +- H_k,eff|, is overlaid.
 """
 
 import argparse
-
-import matplotlib.pyplot as plt
-import numpy as np
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from _common import fig_path, timed
+import jax
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
 
-from micromagpy.config import GAMMA, MU0
-from micromagpy.demag import compute_demag_tensor
-from micromagpy.energy import relax
-from micromagpy.simulation import simulate
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from _common import fig_path, timed  # noqa: E402
+
+from micromagpy import jax_backend as mj  # noqa: E402
+from micromagpy.config import GAMMA, MU0  # noqa: E402
 
 n = (16, 16, 1)
 dx = (4e-9, 4e-9, 1e-9)
@@ -54,33 +54,29 @@ def main():
     Hscan = np.linspace(args.hmax, -args.hmax, args.fields)
     steps = int(args.time / dt)
     wait = int(0.2e-9 / dt)
-    rk_steps = 0
-    f_demag = compute_demag_tensor(n, dx)
+    field = mj.make_field(n, dx, ms, A, K=Ku)
     # field slightly tilted (1 deg) to break the symmetry, pulse along x
     tilt = np.deg2rad(1.0)
-    pulse_amp, pulse_dur = 2e3, 0.05e-9
-    m = np.zeros(n + (3,))
-    m[..., 2] = 1.0
-    spectra, mz_avg = [], []
-    info = dict(mesh=list(n), fields=args.fields, samples_per_field=steps, solver="relax + rk45")
+    pulse = jnp.array([2e3, 0.0, 0.0])
+    pulse_dur = 0.05e-9
+
+    def point(m, H):
+        h_dc = H * jnp.array([np.sin(tilt), 0.0, np.cos(tilt)])
+        m = mj.relax(m, field, ms, h_ext=h_dc)["m"]
+        res = mj.run(m, field, damping, dt, steps, h_ext=lambda t: h_dc + pulse * (t < pulse_dur), solver="rk45", tol=1e-5)
+        return res["m"], (res["m_avg"], res["rk45_steps"])
+
+    m0 = jnp.zeros(n + (3,)).at[..., 2].set(1.0)
+    scan = jax.jit(lambda m, H: jax.lax.scan(point, m, H)[1])
+    info = dict(mesh=list(n), fields=args.fields, samples_per_field=steps, solver="jax relax + rk45",
+                backend=f"jax float64 on {jax.devices()[0].device_kind}")
     with timed("fmr_basic", **info) as tinfo:
-        for H in Hscan:
-            h_dc = H * np.array([np.sin(tilt), 0.0, np.cos(tilt)])
-
-            def h_ext(t, h_dc=h_dc):
-                return h_dc + (np.array([pulse_amp, 0, 0]) if t < pulse_dur else 0.0)
-
-            m = relax(m, dx, ms, A=A, K=Ku, h_ext=h_dc, demag=f_demag)["m"]
-            res = simulate(
-                m, dx, ms, A, damping, dt, steps, K=Ku, h_ext=h_ext, demag=f_demag, solver="rk45", tol=1e-5
-            )
-            rk_steps += res["rk45_steps"]
-            m = res["m"]
-            f, y = spectrum(res["m_avg"][wait:, 0], dt)
-            spectra.append(y)
-            mz_avg.append(res["m_avg"][-1, 2])
-        tinfo["rk45_steps_total"] = rk_steps
-    spectra = np.array(spectra)
+        m_avg, rk_steps = jax.block_until_ready(scan(m0, jnp.asarray(Hscan)))
+        tinfo["rk45_steps_total"] = int(rk_steps.sum())
+    m_avg = np.asarray(m_avg)
+    f = spectrum(m_avg[0, wait:, 0], dt)[0]
+    spectra = np.array([spectrum(a[wait:, 0], dt)[1] for a in m_avg])
+    mz_avg = m_avg[:, -1, 2]
 
     np.savez(fig_path("fmr-basic.npz"), H=Hscan, f=f, spectra=spectra, mz=np.array(mz_avg))
     Hk_eff = 2 * Ku / (MU0 * ms) - ms  # thin-film estimate

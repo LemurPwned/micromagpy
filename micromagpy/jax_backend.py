@@ -35,6 +35,8 @@ import jax.numpy as jnp  # noqa: E402
 import numpy as np  # noqa: E402
 
 from .config import BOLTZMANN, GAMMA, MU0  # noqa: E402
+from .solvers import _A, _B5, _C, _E  # noqa: E402  (Dormand-Prince tableau)
+from .torques import ELECTRON_CHARGE, HBAR  # noqa: E402
 from .demag import compute_demag_tensor_real  # noqa: E402
 from .fft import fft_axes, padded_shape  # noqa: E402
 
@@ -88,22 +90,58 @@ def make_field(n, dx, ms, A, K=0.0, kaxis=(0, 0, 1), demag=True, dtype=jnp.float
     return h
 
 
+def _as_fn(x):
+    return x if callable(x) else (lambda t: x)
+
+
+def _torque(p, coefficients) -> Callable:
+    """``extra(m, t, alpha, pref) = -pref (afl m x p + adl m x (m x p))`` with ``(afl, adl) = coefficients(m, t, alpha)``."""
+    p = jnp.asarray(p, float)
+    p = p / jnp.linalg.norm(p, axis=-1, keepdims=True)
+
+    def extra(m, t, alpha, pref):
+        afl, adl = coefficients(m, t, alpha)
+        q = jnp.cross(m, jnp.broadcast_to(p, m.shape))
+        return -pref * (jnp.asarray(afl)[..., None] * q + jnp.asarray(adl)[..., None] * jnp.cross(m, q))
+
+    return extra
+
+
 def sot(Hfl, Hdl, p) -> Callable:
     """SOT term ``extra(m, t, alpha, pref)`` (cmtj convention, see :class:`micromagpy.torques.SOT`).
 
     ``Hfl`` / ``Hdl`` (A/m) may be numbers, per-cell arrays or traceable ``f(t)``.
     """
-    p = jnp.asarray(p) / jnp.linalg.norm(jnp.asarray(p, float))
-    fl = Hfl if callable(Hfl) else (lambda t: Hfl)
-    dl = Hdl if callable(Hdl) else (lambda t: Hdl)
+    fl, dl = _as_fn(Hfl), _as_fn(Hdl)
 
-    def extra(m, t, alpha, pref):
+    def coefficients(m, t, alpha):
         a, b = fl(t), dl(t)
-        afl, adl = jnp.asarray(a - alpha * b)[..., None], jnp.asarray(b + alpha * a)[..., None]
-        q = jnp.cross(m, jnp.broadcast_to(p, m.shape))
-        return -pref * (afl * q + adl * jnp.cross(m, q))
+        return a - alpha * b, b + alpha * a
 
-    return extra
+    return _torque(p, coefficients)
+
+
+def stt(j, p, thickness, ms, polarisation=1.0, spacer_lambda=1.0, beta=0.0, kappa=1.0, alternative=False) -> Callable:
+    """Slonczewski STT term ``extra(m, t, alpha, pref)`` (cmtj convention, see :class:`micromagpy.torques.STT`).
+
+    ``j`` (A/m^2) may be a number, a per-cell array or a traceable ``j(t)``.
+    """
+    jf = _as_fn(j)
+    pu = jnp.asarray(p, float)
+    pu = pu / jnp.linalg.norm(pu, axis=-1, keepdims=True)
+    lam2 = spacer_lambda**2
+
+    def coefficients(m, t, alpha):
+        a_j = HBAR * jf(t) / (ELECTRON_CHARGE * MU0 * ms * thickness)
+        mp = jnp.sum(m * pu, -1)
+        if alternative:
+            eta = polarisation / (1 + spacer_lambda * mp)
+        else:
+            eta = polarisation * lam2 / (lam2 + 1 + (lam2 - 1) * mp)
+        a = a_j * eta
+        return -beta * a, kappa * a
+
+    return _torque(p, coefficients)
 
 
 def thermal_sigma(dx, ms, alpha, temperature, dt) -> float:
@@ -114,6 +152,48 @@ def thermal_sigma(dx, ms, alpha, temperature, dt) -> float:
 def _normalize(m):
     norm = jnp.linalg.norm(m, axis=-1, keepdims=True)
     return jnp.where(norm > 0, m / jnp.where(norm > 0, norm, 1), m)
+
+
+def _max_norm(x):
+    return jnp.sqrt(jnp.max(jnp.sum(x * x, -1)))
+
+
+def _dp45(rhs, m, t, h, k1):
+    """One Dormand-Prince trial step: ``(y5, k7, err)`` as :func:`micromagpy.solvers.rk45_step`."""
+    ks = [k1]
+    for s in range(1, 6):
+        ks.append(rhs(m + h * sum(a * k for a, k in zip(_A[s], ks) if a), t + _C[s] * h))
+    y5 = _normalize(m + h * sum(b * k for b, k in zip(_B5, ks) if b))
+    ks.append(rhs(y5, t + h))
+    err = _max_norm(h * sum(e * k for e, k in zip(_E, ks) if e))
+    return y5, ks[-1], err
+
+
+def _dp45_attempt(rhs, m, t, dt, k1, tol, dt_max):
+    """Try one step of size ``min(dt, dt_max)``; returns ``(accepted, m, t, k1, dt)`` (numba rules)."""
+    h = jnp.minimum(dt, dt_max)
+    y5, k7, err = _dp45(rhs, m, t, h, k1)
+    factor = jnp.clip(jnp.where(err > 0, 0.9 * (tol / jnp.where(err > 0, err, 1.0)) ** 0.2, 5.0), 0.2, 5.0)
+    ok = (err <= tol) | (h <= 1e-18)
+    # an accepted step clamped by dt_max keeps the previous proposal
+    new_dt = jnp.where(ok, jnp.where(h >= dt, h * factor, dt), h * factor)
+    return ok, jnp.where(ok, y5, m), jnp.where(ok, t + h, t), jnp.where(ok, k7, k1), new_dt
+
+
+def _integrate_rk45(rhs, m, t0, t1, dt, tol):
+    """Adaptive Dormand-Prince from ``t0`` to exactly ``t1`` (as :func:`micromagpy.solvers.integrate_rk45`)."""
+
+    def cond(s):
+        _, t, _, _, _ = s
+        return (t < t1 * (1 - 1e-14)) & (t1 - t > 1e-25)
+
+    def body(s):
+        m, t, k1, dt, n = s
+        ok, m, t, k1, dt = _dp45_attempt(rhs, m, t, dt, k1, tol, t1 - t)
+        return m, t, k1, dt, n + ok
+
+    m, _, _, dt, n = jax.lax.while_loop(cond, body, (m, t0, rhs(m, t0), dt, 0))
+    return m, dt, n
 
 
 def run(
@@ -130,6 +210,7 @@ def run(
     record_every: int = 1,
     gamma: float = GAMMA,
     observe: Callable | None = None,
+    tol: float = 1e-6,
 ):
     """Integrate LLG for ``steps`` steps in one compiled loop.
 
@@ -137,14 +218,17 @@ def run(
     :param h_ext: traceable ``h_ext(t)`` (A/m), broadcastable to ``m``.
     :param extra: torque term ``extra(m, t, alpha, pref)`` (e.g. :func:`sot`).
     :param sigma: thermal field std (A/m, see :func:`thermal_sigma`); Heun only.
-    :param solver: ``"heun"`` (stochastic Heun, Stratonovich) or ``"rk4"``.
+    :param solver: ``"heun"`` (stochastic Heun, Stratonovich), ``"rk4"`` or
+        ``"rk45"`` (adaptive Dormand-Prince with error ``tol`` per cell; ``dt``
+        is then only the output interval, as in :func:`micromagpy.simulation.simulate`).
     :param observe: ``observe(m)`` recorded instead of the average over magnetic
         cells (e.g. averages of ``m_x**2`` for magnetoresistance).
     :return: dict with ``t``, ``m_avg`` (every ``record_every`` steps, before
-        the step as in :func:`micromagpy.simulation.simulate`) and ``m``.
+        the step as in :func:`micromagpy.simulation.simulate`), ``m`` and, for
+        ``"rk45"``, ``rk45_steps`` (accepted steps).
     """
-    if solver not in ("heun", "rk4"):
-        raise ValueError("solver must be 'heun' or 'rk4'")
+    if solver not in ("heun", "rk4", "rk45"):
+        raise ValueError("solver must be 'heun', 'rk4' or 'rk45'")
     if sigma and solver != "heun":
         raise ValueError("Use solver='heun' with thermal noise")
     m0 = jnp.asarray(m0)
@@ -165,14 +249,17 @@ def run(
         return dm.astype(m.dtype)  # keep float32 runs in float32
 
     def step(carry, i):
-        m, key = carry
+        m, key, hdt, nacc = carry
         t = (i * dt).astype(m0.dtype)
+        if solver == "rk45":
+            m, hdt, n = _integrate_rk45(lambda mm, tt: rhs(mm, tt, 0.0), m, t, t + dt, hdt, tol)
+            return (m, key, hdt, nacc + n), None
         if solver == "rk4":
             k1 = rhs(m, t, 0.0)
             k2 = rhs(m + 0.5 * dt * k1, t + 0.5 * dt, 0.0)
             k3 = rhs(m + 0.5 * dt * k2, t + 0.5 * dt, 0.0)
             k4 = rhs(m + dt * k3, t + dt, 0.0)
-            return (_normalize(m + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)), key), None
+            return (_normalize(m + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)), key, hdt, nacc), None
         hth = 0.0
         if sigma:
             key, sub = jax.random.split(key)
@@ -180,7 +267,7 @@ def run(
         k1 = rhs(m, t, hth)
         mp = _normalize(m + dt * k1)
         k2 = rhs(mp, t, hth)  # h_ext and torques held at t, as in simulate(solver="heun")
-        return (_normalize(m + 0.5 * dt * (k1 + k2)), key), None
+        return (_normalize(m + 0.5 * dt * (k1 + k2)), key, hdt, nacc), None
 
     def block(carry, j):
         m = carry[0]
@@ -189,5 +276,48 @@ def run(
         return carry, avg
 
     n_rec = steps // record_every
-    (m, _), m_avg = jax.lax.scan(block, (m0, key), jnp.arange(n_rec))
-    return {"t": jnp.arange(n_rec) * record_every * dt, "m_avg": m_avg, "m": m}
+    carry = (m0, key, jnp.asarray(dt, m0.dtype), jnp.asarray(0))
+    (m, _, _, nacc), m_avg = jax.lax.scan(block, carry, jnp.arange(n_rec))
+    out = {"t": jnp.arange(n_rec) * record_every * dt, "m_avg": m_avg, "m": m}
+    if solver == "rk45":
+        out["rk45_steps"] = nacc
+    return out
+
+
+def relax(m0, field: Callable, ms: float, h_ext=0.0, torque_tol: float = 1e-3, tol: float = 1e-4,
+          max_steps: int = 100000, dt0: float = 1e-13, gamma: float = GAMMA):
+    """Minimise the energy with the precession-free flow ``dm/dt = -gamma m x (m x H)``.
+
+    Same algorithm as :func:`micromagpy.energy.relax` (adaptive Dormand-Prince,
+    converged when ``max |m x H| < torque_tol * Ms``), in one compiled loop, so it
+    can be jitted, vmapped over fields or put in a ``lax.scan`` over a field sweep.
+    ``tol`` bounds the attainable torque at about ``tol / (gamma dt)``: use
+    ``tol`` ~ 1e-6 for tight ``torque_tol``.
+
+    :param field: ``field(m)`` from :func:`make_field`.
+    :param h_ext: constant external field (A/m), vector or ``n + (3,)`` array.
+    :return: dict with ``m``, ``converged``, ``steps`` (accepted), ``rejected``,
+        ``max_torque`` (A/m) and ``pseudo_time``.
+    """
+    m0 = _normalize(jnp.asarray(m0))
+    h_ext = jnp.asarray(h_ext, m0.dtype)
+
+    def rhs(m, t):
+        h = field(m) + h_ext
+        return (-gamma * jnp.cross(m, jnp.cross(m, h))).astype(m.dtype)
+
+    def cond(s):
+        _, _, _, _, acc, _, torque = s
+        return (torque >= torque_tol * ms) & (acc < max_steps)
+
+    def body(s):
+        m, t, k1, dt, acc, rej, torque = s
+        ok, m, t, k1, dt = _dp45_attempt(rhs, m, t, dt, k1, tol, jnp.inf)
+        torque = jnp.where(ok, _max_norm(k1) / gamma, torque)
+        return m, t, k1, dt, acc + ok, rej + (~ok), torque
+
+    k1 = rhs(m0, 0.0)
+    init = (m0, jnp.asarray(0.0, m0.dtype), k1, jnp.asarray(dt0, m0.dtype), 0, 0, jnp.asarray(jnp.inf, m0.dtype))
+    m, t, _, _, acc, rej, torque = jax.lax.while_loop(cond, body, init)
+    return {"m": m, "converged": torque < torque_tol * ms, "steps": acc, "rejected": rej,
+            "max_torque": torque, "pseudo_time": t}

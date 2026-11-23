@@ -413,9 +413,27 @@ Results are in [`benchmarks/figures/benchmark.json`](https://github.com/LemurPwn
 
 [`micromagpy/jax_backend.py`](https://github.com/LemurPwned/micromagpy/blob/master/micromagpy/jax_backend.py)
 (`pip install "micromagpy[jax]"`, or `jax[cuda13]` for an NVIDIA GPU) runs the
-same discretisation (Newell demag, Neumann exchange, uniaxial anisotropy, SOT,
-thermal field; Heun or RK4) as one compiled `lax.scan`, and batches independent
-runs with `jax.vmap`. It matches `simulate` to 1e-10 (`tests/test_jax.py`).
+same discretisation as the numba path, as one compiled loop, and batches
+independent runs with `jax.vmap`:
+
+- **Fields:** Newell demag, Neumann exchange, uniaxial anisotropy and interfacial DMI.
+- **Torques:** SOT (`sot`) and STT (`stt`).
+- **Noise:** the thermal field.
+- **Solvers:** `run` integrates with Heun, RK4 or adaptive Dormand-Prince (`solver="rk45"`). `relax` is the energy minimiser.
+
+`relax` and `run` can be jitted, vmapped and put inside a `lax.scan`, so a whole
+hysteresis or FMR field sweep compiles into one call. `tests/test_jax.py` checks
+them against `simulate` and `energy.relax`. Fields and the Heun/RK4 trajectories
+agree to 1e-10, and the RK45 and relax results agree to 1e-9 with the same
+number of accepted steps.
+
+```python
+# hysteresis sweep: relax at every field, starting from the previous state
+field = mj.make_field(n, dx, ms, A, K=Ku, kaxis=(1, 0, 0))
+point = lambda m, h: (lambda r: (r["m"], r["m"][..., 0].mean()))(
+    mj.relax(m, field, ms, h_ext=jnp.array([h, 0, 0]), torque_tol=1e-4, tol=1e-6))
+mx = jax.jit(lambda m0, H: jax.lax.scan(point, m0, H)[1])(m0, H_values)
+```
 
 ```python
 import jax, jax.numpy as jnp

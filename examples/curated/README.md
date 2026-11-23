@@ -9,8 +9,10 @@ the `results/` next to it.
 Scripts marked **JAX** use the optional JAX backend
 ([`micromagpy/jax_backend.py`](../../micromagpy/jax_backend.py)) to integrate
 hundreds of independent simulations in one batch, which is fast on a GPU
-(`pip install "micromagpy[jax]"`, or `jax[cuda13]` for NVIDIA). The others use
-the numba path.
+(`pip install "micromagpy[jax]"`, or `jax[cuda13]` for NVIDIA). The
+hysteresis, magnetoresistance, FMR, STO and SOT-loop examples also use JAX
+(`relax` and adaptive RK45 compiled into one sweep). The noise examples still
+use the numba path.
 
 ## [`noise/`](noise)
 
@@ -25,15 +27,15 @@ the numba path.
 
 | example | cmtj counterpart | what it shows |
 | --- | --- | --- |
-| [`fmr_basic.py`](dynamics/results/fmr_basic.md) | `fmr-basic.py` | pulse-excited FMR field scan of a PMA element with hysteresis (relax + RK45) |
-| [`sto.py`](dynamics/results/sto.md) | `sto.py` | STT oscillator: trajectory and f(j) vs the macrospin law f = gamma0 aJ P / (4 pi alpha) |
+| [`fmr_basic.py`](dynamics/results/fmr_basic.md) **JAX** | `fmr-basic.py` | pulse-excited FMR field scan of a PMA element with hysteresis (relax + RK45) |
+| [`sto.py`](dynamics/results/sto.md) **JAX** | `sto.py` | STT oscillator: trajectory and f(j) vs the macrospin law f = gamma0 aJ P / (4 pi alpha) |
 
 ## [`switching/`](switching)
 
 | example | cmtj counterpart | what it shows |
 | --- | --- | --- |
-| [`switching_hysteresis.py`](switching/results/switching_hysteresis.md) | `switching-hysteresis.py` | field-driven M(H) loop of an in-plane disk, coercive field vs Stoner-Wohlfarth |
-| [`sot_switching.py`](switching/results/sot_switching.md) | `cims-hysteresis.py` | SOT switching loops of a PMA element; polarity reverses with H_x, field-like torque lowers the switching current |
+| [`switching_hysteresis.py`](switching/results/switching_hysteresis.md) **JAX** | `switching-hysteresis.py` | field-driven M(H) loop of an in-plane disk, coercive field vs Stoner-Wohlfarth |
+| [`sot_switching.py`](switching/results/sot_switching.md) **JAX** | `cims-hysteresis.py` | SOT switching loops of a PMA element; polarity reverses with H_x, field-like torque lowers the switching current |
 | [`sot_phase_diagram.py`](switching/results/sot_phase_diagram.md) **JAX** | `cims-stability-stability-diagram.py` | switching probability over (H_x, j) at 300 K from thermal replicas |
 | [`p_bit.py`](switching/results/p_bit.md) **JAX** | `p-bit.py` | telegraph noise of a low-barrier PMA disk and the p-bit sigmoid <m_z>(H) = tanh(mu0 Ms V H / kT) |
 
@@ -41,7 +43,7 @@ the numba path.
 
 | example | cmtj counterpart | what it shows |
 | --- | --- | --- |
-| [`magnetoresistance.py`](transport/results/magnetoresistance.md) | `harmonic-hall.py` | Rxx / Rxy field sweeps (AMR, SMR, AHE, planar Hall) of a PMA Hall bar |
+| [`magnetoresistance.py`](transport/results/magnetoresistance.md) **JAX** | `harmonic-hall.py` | Rxx / Rxy field sweeps (AMR, SMR, AHE, planar Hall) of a PMA Hall bar |
 | [`spin_diode.py`](transport/results/spin_diode.md) **JAX** | `vsd-basic-field-scan.py` | spin-diode mixing voltage vs field at several frequencies, resonance vs the Kittel law |
 
 Not ported: `afm-resonance.py`, `iec-coupling.py` and the three-layer part of
@@ -56,7 +58,7 @@ micromagpy does not model yet; `ahe_loops.py` is covered by
 
 ## Timings
 
-Wall times from each folder's `results/timings.json`. numba runs: older entries on a 4-core container, `switching_hysteresis` / `magnetoresistance` on a Mac M5 Pro with one numba thread. JAX runs on the NVIDIA GB10 (DGX Spark).
+Wall times from each folder's `results/timings.json`. numba runs: older entries on a 4-core container, `switching_hysteresis` / `magnetoresistance` on a Mac M5 Pro with one numba thread. JAX runs on the NVIDIA GB10 (DGX Spark), and for the five examples ported to JAX also on the Mac CPU; their numba times are kept in brackets.
 
 | Example | Mesh | Work | Backend | Wall time |
 |---|---|---|---|---|
@@ -65,11 +67,11 @@ Wall times from each folder's `results/timings.json`. numba runs: older entries 
 | noise/noise_spectrogram | 16×16×1 | 11 fields × 320 000 Heun steps | numba | 857 s |
 | noise/domain_noise (GIFs) | 32×8×1 | 100 frames, per case | numba | 12–16 s |
 | noise/domain_noise (sweeps) | 32×8×1 | 36 runs × 6 ns, per case | numba | 583–609 s |
-| dynamics/fmr_basic | 16×16×1 | 100 fields, 800k RK45 steps | numba (1 thread) | 803 s |
-| dynamics/sto | 16×16×1 | 8 currents × 6 ns | numba (1 thread) | 90 s |
-| switching/sot_switching | 16×16×1 | 3 loops × 261 pulses | numba (1 thread) | 3093 s |
-| switching/switching_hysteresis | 10×10×1 | 480 relaxed points | numba (1 thread) | 22 s |
+| dynamics/fmr_basic | 16×16×1 | 100 fields, 800k RK45 steps | JAX f64, Mac CPU / GB10 (numba 1 thread) | 156 / 286 s (803 s) |
+| dynamics/sto | 16×16×1 | 8 currents × 6 ns (vmap) | JAX f64, Mac CPU / GB10 (numba 1 thread) | 17 / 6.1 s (90 s) |
+| switching/sot_switching | 16×16×1 | 3 loops × 261 pulses (vmap) | JAX f64, Mac CPU / GB10 (numba 1 thread) | 548 / 251 s (3093 s) |
+| switching/switching_hysteresis | 10×10×1 | 480 relaxed points | JAX f64, Mac CPU / GB10 (numba 1 thread) | 4.0 / 14.5 s (22 s) |
 | switching/p_bit | 4×4×1 | 168 trajectories × 10⁶ steps | JAX f64, GB10 | 107 s (numba est. 7.4×10⁴ s) |
 | switching/sot_phase_diagram | 16×16×1 | 5000 runs × 20 000 steps | JAX f32, GB10 | 242 s (numba est. ~8 h) |
-| transport/magnetoresistance | 32×32×1 | 400 relaxed points | numba (1 thread) | 89 s |
+| transport/magnetoresistance | 32×32×1 | 400 relaxed points | JAX f64, Mac CPU / GB10 (numba 1 thread) | 71 / 42 s (89 s) |
 | transport/spin_diode | 32×32×1 | 600 runs × 200 000 RK4 steps | JAX f32, GB10 | 1409 s |

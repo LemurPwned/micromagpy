@@ -1,6 +1,6 @@
 # SOT current-induced switching
 
-Script: [`../sot_switching.py`](../sot_switching.py) · cmtj counterpart: `cims-hysteresis.py` · wall time 3093 s (numba, 1 thread, Mac M5 Pro)
+Script: [`../sot_switching.py`](../sot_switching.py) · cmtj counterpart: `cims-hysteresis.py` · wall time JAX 548 s (Mac CPU) / 251 s (GB10), numba 3093 s
 
 The device is a 64×64×1 nm PMA element (Ku = 500 kJ/m³, H_k,eff ≈ 195 kA/m, α = 0.1) on a heavy metal. Current along x gives a damping-like SOT with p = y; the current density is converted with a spin Hall angle θ_SH = 0.3. Each loop point is:
 1. a 1 ns current pulse (RK45);

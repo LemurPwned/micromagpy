@@ -1,6 +1,6 @@
 # Spin-transfer oscillator
 
-Script: [`../sto.py`](../sto.py) · cmtj counterpart: `sto.py` · wall time 96 s
+Script: [`../sto.py`](../sto.py) · cmtj counterpart: `sto.py` · wall time JAX 17 s (Mac CPU) / 6.1 s (GB10), numba 90 s
 
 The device is a 64×64×2 nm in-plane free layer (Ms = 800 kA/m, α = 0.02) with a perpendicular polariser p = z. The torque is cmtj-style Slonczewski STT with P = 0.5 and Λ = 1, so η = P/2. Each current runs for 6 ns with adaptive RK45.
 

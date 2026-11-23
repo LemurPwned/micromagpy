@@ -13,33 +13,36 @@ import argparse
 import os
 import sys
 
+import jax
+import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from _common import fig_path, kim_resistance, timed  # noqa: E402
 
+from micromagpy import jax_backend as mj  # noqa: E402
 from micromagpy.config import MU0  # noqa: E402
-from micromagpy.demag import compute_demag_tensor  # noqa: E402
-from micromagpy.energy import relax  # noqa: E402
 
 n = (32, 32, 1)
 dx = (4e-9, 4e-9, 1.45e-9)
 ms, Ku, A = 0.525 / MU0, 1.54e5, 1.3e-11
 
 
-def sweep(phi_deg, H, f_demag):
-    theta, phi = np.deg2rad(92), np.deg2rad(phi_deg)
-    u = np.array([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)])
-    m = np.zeros(n + (3,))
-    m[..., 2] = 1.0
-    rows, steps = [], 0
-    for h in H:
-        res = relax(m, dx, ms, A=A, K=Ku, h_ext=h * u, demag=f_demag, torque_tol=1e-4, tol=1e-6)
-        m, steps = res["m"], steps + res["steps"]
-        rows.append(kim_resistance(((m[..., 0] ** 2).mean(), (m[..., 1] ** 2).mean()),
-                                   (m[..., 0] * m[..., 1]).mean(), m[..., 2].mean()))
-    return np.array(rows), steps
+FIELD = mj.make_field(n, dx, ms, A, K=Ku)
+
+
+@jax.jit
+def sweep(u, H):
+    """Relax along the field sweep H * u; returns <m_x^2>, <m_y^2>, <m_x m_y>, <m_z> and relax steps per field."""
+
+    def point(m, h):
+        res = mj.relax(m, FIELD, ms, h_ext=h * u, torque_tol=1e-4, tol=1e-6)
+        m = res["m"]
+        obs = jnp.stack([(m[..., 0] ** 2).mean(), (m[..., 1] ** 2).mean(), (m[..., 0] * m[..., 1]).mean(), m[..., 2].mean()])
+        return m, (obs, res["steps"])
+
+    return jax.lax.scan(point, jnp.zeros(n + (3,)).at[..., 2].set(1.0), H)[1]
 
 
 def main():
@@ -48,13 +51,17 @@ def main():
     args = parser.parse_args()
     up = np.linspace(-600e3, 600e3, args.points)
     H = np.concatenate([up, up[::-1]])
-    f_demag = compute_demag_tensor(n, dx)
     out = {}
-    with timed("magnetoresistance", mesh=list(n), points=2 * len(H), solver="relax") as info:
+    with timed("magnetoresistance", mesh=list(n), points=2 * len(H), solver="jax relax",
+               backend=f"jax float64 on {jax.devices()[0].device_kind}") as info:
         info["relax_steps_total"] = 0
         for phi in (1, 45):
-            out[phi], s = sweep(phi, H, f_demag)
-            info["relax_steps_total"] += int(s)
+            theta, ph = np.deg2rad(92), np.deg2rad(phi)
+            u = jnp.array([np.sin(theta) * np.cos(ph), np.sin(theta) * np.sin(ph), np.cos(theta)])
+            obs, s = jax.block_until_ready(sweep(u, jnp.asarray(H)))
+            obs = np.asarray(obs)
+            out[phi] = np.stack(kim_resistance((obs[:, 0], obs[:, 1]), obs[:, 2], obs[:, 3]), -1)
+            info["relax_steps_total"] += int(s.sum())
 
     np.savez(fig_path("magnetoresistance.npz"), H=H, k=len(up), phi1=out[1], phi45=out[45])
     hk_eff = 2 * Ku / (MU0 * ms) - ms

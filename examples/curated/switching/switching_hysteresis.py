@@ -8,22 +8,24 @@ minimiser starting from the previous state (RK45 tol 1e-6: with the default
 1e-4 the step-size error floor, ~tol / (gamma dt), stays above the torque
 criterion and relax never converges), so the metastable branch (and the
 coercive field) is kept. The Stoner-Wohlfarth coercive field of the macrospin,
-H_k = 2 Ku / (mu0 Ms), is marked.
+H_k = 2 Ku / (mu0 Ms), is marked. The whole sweep is one ``lax.scan`` over the
+JAX ``relax``.
 """
 
 import argparse
 import os
 import sys
 
+import jax
+import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from _common import fig_path, timed  # noqa: E402
 
+from micromagpy import jax_backend as mj  # noqa: E402
 from micromagpy.config import MU0  # noqa: E402
-from micromagpy.demag import compute_demag_tensor  # noqa: E402
-from micromagpy.energy import relax  # noqa: E402
 from micromagpy.shapes import circular_mask, span_grid  # noqa: E402
 
 n = (10, 10, 1)
@@ -40,22 +42,26 @@ def main():
     disk = circular_mask(4.5, 4.5, 5.0, span_grid(n))[..., 0]
     m = np.zeros(n + (3,))
     m[disk] = (1.0, 0.1, 0.0)
-    f_demag = compute_demag_tensor(n, dx)
+    field = mj.make_field(n, dx, ms, A, K=Ku, kaxis=kaxis)
     q = args.points
     sweep = np.concatenate(
         [np.linspace(0, -args.hmax, q, endpoint=False), np.linspace(-args.hmax, args.hmax, 2 * q, endpoint=False),
          np.linspace(args.hmax, 0, q)]
     )
-    mx = []
-    with timed("switching_hysteresis", mesh=list(n), points=len(sweep), solver="relax (RK45 damping flow)") as info:
-        steps = 0
-        m = relax(m, dx, ms, A=A, K=Ku, kaxis=kaxis, h_ext=(args.hmax, 100.0, 0), demag=f_demag, tol=1e-6)["m"]
-        for h in sweep:
-            res = relax(m, dx, ms, A=A, K=Ku, kaxis=kaxis, h_ext=(h, 100.0, 0), demag=f_demag, torque_tol=1e-4, tol=1e-6)
-            m, steps = res["m"], steps + res["steps"]
-            mx.append(m[disk, 0].mean())
-        info["relax_steps_total"] = int(steps)
-    mx = np.array(mx)
+    def point(m, h):
+        res = mj.relax(m, field, ms, h_ext=jnp.array([h, 100.0, 0.0]), torque_tol=1e-4, tol=1e-6)
+        return res["m"], (res["m"][..., 0].sum() / disk.sum(), res["steps"])
+
+    @jax.jit
+    def loop(m):
+        m = mj.relax(m, field, ms, h_ext=jnp.array([args.hmax, 100.0, 0.0]), tol=1e-6)["m"]
+        return jax.lax.scan(point, m, jnp.asarray(sweep))[1]
+
+    with timed("switching_hysteresis", mesh=list(n), points=len(sweep), solver="jax relax (RK45 damping flow)",
+               backend=f"jax float64 on {jax.devices()[0].device_kind}") as info:
+        mx, steps = jax.block_until_ready(loop(jnp.asarray(m)))
+        info["relax_steps_total"] = int(steps.sum())
+    mx = np.asarray(mx)
     up = slice(q, 3 * q)
     hc = [sweep[:q][np.argmax(mx[:q] < 0)], sweep[up][np.argmax(mx[up] > 0)]]
     print(f"coercive fields: {hc[0] / 1e3:.1f} / {hc[1] / 1e3:.1f} kA/m, H_k = {2 * Ku / (MU0 * ms) / 1e3:.1f} kA/m")

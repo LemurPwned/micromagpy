@@ -1,5 +1,6 @@
 {
   "fmr_basic": {
+    "backend": "jax float64 on cpu",
     "fields": 100,
     "mesh": [
       16,
@@ -8,10 +9,11 @@
     ],
     "rk45_steps_total": 799888,
     "samples_per_field": 4000,
-    "seconds": 802.97,
-    "solver": "relax + rk45"
+    "seconds": 155.66,
+    "solver": "jax relax + rk45"
   },
   "sto": {
+    "backend": "jax float64 on cpu",
     "currents": 8,
     "mesh": [
       16,
@@ -19,8 +21,8 @@
       1
     ],
     "rk45_steps_total": 95992,
-    "seconds": 90.15,
-    "solver": "rk45",
+    "seconds": 16.91,
+    "solver": "jax rk45 (vmap)",
     "time_per_current_ns": 6.0
   }
 }

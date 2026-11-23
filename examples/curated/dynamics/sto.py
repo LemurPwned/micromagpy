@@ -10,19 +10,20 @@ the trajectory on the unit sphere for one current (cf. cmtj's figure).
 """
 
 import argparse
-
-import matplotlib.pyplot as plt
-import numpy as np
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from _common import fig_path, timed
+import jax
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
 
-from micromagpy.config import GAMMA, MU0
-from micromagpy.demag import compute_demag_tensor
-from micromagpy.simulation import simulate
-from micromagpy.torques import STT
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from _common import fig_path, timed  # noqa: E402
+
+from micromagpy import jax_backend as mj  # noqa: E402
+from micromagpy.config import GAMMA  # noqa: E402
+from micromagpy.torques import STT  # noqa: E402
 
 n = (16, 16, 1)
 dx = (4e-9, 4e-9, 2e-9)
@@ -30,13 +31,10 @@ ms, A, damping, P = 8e5, 1.3e-11, 0.02, 0.5
 dt = 1e-12  # output interval (RK45)
 
 
-def run(j, f_demag, time):
-    m = np.zeros(n + (3,))
-    m[..., 0] = 1.0
-    m[..., 2] = 0.05  # small seed tilt
-    stt = STT(j, p=(0, 0, 1), thickness=dx[2], ms=ms, polarisation=P, spacer_lambda=1.0)
-    res = simulate(m, dx, ms, A, damping, dt, int(time / dt), demag=f_demag, torques=[stt], solver="rk45", tol=1e-5)
-    return res, stt
+def run(j, field, steps):
+    m = jnp.zeros(n + (3,)).at[..., 0].set(1.0).at[..., 2].set(0.05)  # small seed tilt
+    stt = mj.stt(j, (0, 0, 1), dx[2], ms, polarisation=P, spacer_lambda=1.0)
+    return mj.run(m, field, damping, dt, steps, extra=stt, solver="rk45", tol=1e-5)
 
 
 def main():
@@ -44,26 +42,30 @@ def main():
     parser.add_argument("--currents", type=int, default=8)
     parser.add_argument("--time", type=float, default=6e-9)
     args = parser.parse_args()
-    f_demag = compute_demag_tensor(n, dx)
+    field = mj.make_field(n, dx, ms, A)
     js = np.linspace(1e10, 7e10, args.currents)
+    steps = int(args.time / dt)
+    batch = jax.jit(jax.vmap(lambda j: run(j, field, steps)))  # all currents at once
     freqs, mzs, mnorm, f_theory, example = [], [], [], [], None
-    with timed("sto", mesh=list(n), currents=args.currents, time_per_current_ns=args.time * 1e9, solver="rk45") as info:
-        steps = 0
-        for j in js:
-            res, stt = run(j, f_demag, args.time)
-            steps += res["rk45_steps"]
-            tail = res["m_avg"][len(res["m_avg"]) // 2 :]
-            # frequency from zero crossings of <m_x> (finer than the PSD bin width)
-            x = tail[:, 0] - tail[:, 0].mean()
-            crossings = np.count_nonzero(np.diff(np.sign(x)) != 0)
-            freqs.append(crossings / (2 * len(x) * dt))
-            mzs.append(tail[:, 2].mean())
-            mnorm.append(np.linalg.norm(tail, axis=1).mean())
-            f_theory.append(GAMMA * float(stt.a_j()) * P / (4 * np.pi * damping))
-            print(f"j = {j:.2e} A/m^2: f = {freqs[-1] / 1e9:.2f} GHz (macrospin {f_theory[-1] / 1e9:.2f}), <mz> = {mzs[-1]:.3f}, |<m>| = {mnorm[-1]:.3f}")
-            if example is None and j >= js[len(js) // 2]:
-                example = (j, res)
-        info["rk45_steps_total"] = steps
+    with timed("sto", mesh=list(n), currents=args.currents, time_per_current_ns=args.time * 1e9, solver="jax rk45 (vmap)",
+               backend=f"jax float64 on {jax.devices()[0].device_kind}") as info:
+        out = jax.block_until_ready(batch(jnp.asarray(js)))
+        info["rk45_steps_total"] = int(out["rk45_steps"].sum())
+    t_rec = np.asarray(out["t"][0])
+    for j, m_avg in zip(js, np.asarray(out["m_avg"])):
+        res = {"t": t_rec, "m_avg": m_avg}
+        stt = STT(j, p=(0, 0, 1), thickness=dx[2], ms=ms, polarisation=P, spacer_lambda=1.0)
+        tail = res["m_avg"][len(res["m_avg"]) // 2 :]
+        # frequency from zero crossings of <m_x> (finer than the PSD bin width)
+        x = tail[:, 0] - tail[:, 0].mean()
+        crossings = np.count_nonzero(np.diff(np.sign(x)) != 0)
+        freqs.append(crossings / (2 * len(x) * dt))
+        mzs.append(tail[:, 2].mean())
+        mnorm.append(np.linalg.norm(tail, axis=1).mean())
+        f_theory.append(GAMMA * float(stt.a_j()) * P / (4 * np.pi * damping))
+        print(f"j = {j:.2e} A/m^2: f = {freqs[-1] / 1e9:.2f} GHz (macrospin {f_theory[-1] / 1e9:.2f}), <mz> = {mzs[-1]:.3f}, |<m>| = {mnorm[-1]:.3f}")
+        if example is None and j >= js[len(js) // 2]:
+            example = (j, res)
 
     np.savez(fig_path("sto.npz"), j=js, f=freqs, mz=mzs, mnorm=mnorm, f_theory=f_theory,
              j_example=example[0], t_example=example[1]["t"], m_example=example[1]["m_avg"])

@@ -14,7 +14,7 @@ python examples/curated/compare/switching_hysteresis.py   # -> compare/results/s
 
 ## Field-driven hysteresis ([`switching_hysteresis.py`](switching_hysteresis.py))
 
-**Timing:** cmtj 10.9 s · micromagpy 22 s (numba, 1 thread) · 480 fields each
+**Timing:** cmtj 10.9 s · micromagpy JAX 4.0 s (Mac CPU) / 14.5 s (GB10), numba 22 s · 480 fields each
 
 ![switching-hysteresis](results/switching-hysteresis.png)
 
@@ -22,7 +22,7 @@ The 30 nm disk is nearly a macrospin. The macrospin reverses at 15.2 kA/m, close
 
 ## Rxx / Rxy sweeps ([`magnetoresistance.py`](magnetoresistance.py))
 
-**Timing:** cmtj 9.3 s · micromagpy 89 s (numba, 1 thread) · 400 fields each
+**Timing:** cmtj 9.3 s · micromagpy JAX 71 s (Mac CPU) / 42 s (GB10), numba 89 s · 400 fields each
 
 ![magnetoresistance](results/magnetoresistance.png)
 
@@ -30,7 +30,7 @@ The two models are practically identical, including the switching fields and the
 
 ## Pulse-excited FMR ([`fmr_basic.py`](fmr_basic.py))
 
-**Timing:** cmtj 1.8 s · micromagpy 803 s (numba, 1 thread) · 100 fields each
+**Timing:** cmtj 1.8 s · micromagpy JAX 156 s (Mac CPU) / 286 s (GB10), numba 803 s · 100 fields each
 
 ![fmr-basic](results/fmr-basic.png)
 
@@ -38,7 +38,7 @@ Both show the same uniform-mode line, and both sit above the thin-film Kittel la
 
 ## Spin-transfer oscillator ([`sto.py`](sto.py))
 
-**Timing:** cmtj 0.7 s (25 currents) · micromagpy 90 s (numba, 1 thread, 8 currents)
+**Timing:** cmtj 0.7 s (25 currents) · micromagpy JAX 17 s (Mac CPU) / 6.1 s (GB10), numba 90 s · 8 currents
 
 ![sto](results/sto.png)
 
@@ -46,7 +46,7 @@ The macrospin follows the analytic f = γ₀ a_J P / 4πα over the whole range.
 
 ## SOT switching loops ([`sot_switching.py`](sot_switching.py))
 
-**Timing:** cmtj 13 s · micromagpy 3093 s (numba, 1 thread) · 3 loops × 261 pulses each
+**Timing:** cmtj 13 s · micromagpy JAX 548 s (Mac CPU) / 251 s (GB10), numba 3093 s · 3 loops × 261 pulses each
 
 ![sot-switching](results/sot-switching.png)
 
@@ -78,15 +78,15 @@ The lines are identical in shape, amplitude and position: a saturated 128 nm ele
 
 ## Timings
 
-All on a Mac M5 Pro unless marked GB10. cmtj uses one process, or a pool of 18 for the thermal and batched scans. The micromagnetic numba runs use one thread each. The GPU runs are on the NVIDIA GB10 (DGX Spark).
+All on a Mac M5 Pro unless marked GB10. cmtj uses one process, or a pool of 18 for the thermal and batched scans. micromagpy runs use the JAX backend, float64, on the Mac CPU unless marked GB10; the numba times (one thread) are kept for reference. The GPU runs are on the NVIDIA GB10 (DGX Spark).
 
 | Comparison | Macrospin work | cmtj | micromagpy |
 |---|---|---|---|
-| switching_hysteresis | 480 fields × 10 ns | 10.9 s | 22 s (numba) |
-| magnetoresistance | 400 fields × 10 ns | 9.3 s | 89 s (numba) |
-| fmr_basic | 100 fields × 9 ns | 1.8 s | 803 s (numba) |
-| sto | 25 currents × 6 ns | 0.7 s | 90 s (numba, 8 currents) |
-| sot_switching | 3 × 261 pulses | 13 s | 3093 s (numba, same sampling) |
+| switching_hysteresis | 480 fields × 10 ns | 10.9 s | 4.0 s (JAX; numba 22 s) |
+| magnetoresistance | 400 fields × 10 ns | 9.3 s | 42 s (JAX GB10; numba 89 s) |
+| fmr_basic | 100 fields × 9 ns | 1.8 s | 156 s (JAX; numba 803 s) |
+| sto | 25 currents × 6 ns | 0.7 s | 6.1 s (JAX GB10, 8 currents; numba 90 s) |
+| sot_switching | 3 × 261 pulses | 13 s | 251 s (JAX GB10; numba 3093 s) |
 | sot_phase_diagram | 20 000 runs × 2 ns, 300 K | 42 s | 242 s (JAX GPU, 5000 runs) |
 | p_bit | 168 runs × 100 ns, 300 K | 7.3 s | 107 s (JAX GPU) |
 | spin_diode | 1000 runs × 20 ns | 9.2 s | 1409 s (JAX GPU, 600 runs) |
