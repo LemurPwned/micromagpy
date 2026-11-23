@@ -1,0 +1,106 @@
+{
+  "ahe_loops sample 0": {
+    "backend": "jax float64 on cpu",
+    "mesh": [
+      2,
+      16,
+      16
+    ],
+    "points": 60,
+    "seconds": 14.7,
+    "solver": "jax relax (stack)"
+  },
+  "ahe_loops sample 1": {
+    "backend": "jax float64 on cpu",
+    "mesh": [
+      2,
+      16,
+      16
+    ],
+    "points": 60,
+    "seconds": 5.84,
+    "solver": "jax relax (stack)"
+  },
+  "ahe_loops sample 2": {
+    "backend": "jax float64 on cpu",
+    "mesh": [
+      2,
+      16,
+      16
+    ],
+    "points": 60,
+    "seconds": 5.79,
+    "solver": "jax relax (stack)"
+  },
+  "ahe_loops sample 3": {
+    "backend": "jax float64 on cpu",
+    "mesh": [
+      2,
+      16,
+      16
+    ],
+    "points": 60,
+    "seconds": 12.74,
+    "solver": "jax relax (stack)"
+  },
+  "p_bit": {
+    "backend": "jax vmap on NVIDIA GB10",
+    "mesh": [
+      4,
+      4,
+      1
+    ],
+    "numba_estimate_s": 73663.6,
+    "seconds": 107.36,
+    "steps": 1000000,
+    "trajectories": 168
+  },
+  "saf_hysteresis": {
+    "backend": "jax float64 on cpu",
+    "mesh": [
+      2,
+      40,
+      40
+    ],
+    "points": 240,
+    "relax_steps_total": 172521,
+    "seconds": 1045.65,
+    "solver": "jax relax (stack, vmap)"
+  },
+  "sot_phase_diagram": {
+    "backend": "jax vmap heun float32 on NVIDIA GB10",
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "seconds": 1048.73,
+    "simulations": 20000,
+    "steps": 20000
+  },
+  "sot_switching": {
+    "backend": "jax float64 on cpu",
+    "loops": 3,
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "points_per_loop": 326,
+    "rk45_steps_total": 1873631,
+    "seconds": 548.3,
+    "solver": "jax rk45 pulse + relax (vmap)"
+  },
+  "switching_hysteresis": {
+    "backend": "jax float64 on cpu",
+    "mesh": [
+      10,
+      10,
+      1
+    ],
+    "points": 480,
+    "relax_steps_total": 45101,
+    "seconds": 3.95,
+    "solver": "jax relax (RK45 damping flow)"
+  }
+}

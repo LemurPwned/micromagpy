@@ -3,8 +3,13 @@
 The original tensor code is timed serially (it used a 6-process pool, 7.8 s
 for 100x25x1 on a 4-core machine); larger meshes are skipped for it.
 
-Run from the repository root: ``python benchmarks/benchmark.py``. Writes
-``benchmarks/figures/benchmark.png`` and ``benchmarks/figures/benchmark.json``.
+Run from the repository root: ``python benchmarks/benchmark.py <machine>``
+(writes ``benchmarks/figures/benchmark_<machine>.json``), on the Mac (``mac``)
+and the DGX (``dgx``), then ``python benchmarks/benchmark.py plot`` for
+``benchmarks/figures/benchmark.png``.
+
+``step_new_ms`` in the committed JSONs was measured with the former numba
+kernels; since their removal, a rerun times the vectorised NumPy path instead.
 """
 
 import json
@@ -63,7 +68,32 @@ def new_step(m, f, n, dx):
     return pure_llg(0.02, GAMMA, m, h, 1e-13)
 
 
-def main():
+def jax_step(n, dx, dtype):
+    """The same h_eff + Euler LLG step on the JAX backend, timed inside a ``lax.scan`` of
+    100 steps (as ``jax_backend.run`` integrates), so the time excludes per-call launch latency."""
+    import jax
+    import jax.numpy as jnp
+
+    from micromagpy import jax_backend as mj
+
+    field = mj.make_field(n, dx, 8e5, 1.3e-11, dtype=dtype)
+    pref = GAMMA / (1 + 0.02**2)
+
+    def step(m, _):
+        c = jnp.cross(m, field(m))
+        m = m - 1e-13 * pref * (c + 0.02 * jnp.cross(m, c))
+        return m / jnp.linalg.norm(m, axis=-1, keepdims=True), None
+
+    steps = jax.jit(lambda m: jax.lax.scan(step, m, None, length=100)[0])
+    return lambda m: steps(m).block_until_ready()
+
+
+def main(machine):
+    import jax
+    import jax.numpy as jnp
+
+    jax.config.update("jax_enable_x64", True)
+    device = jax.devices()[0].device_kind
     rng = np.random.default_rng(0)
     compute_demag_tensor((4, 3, 2), (1e-9, 1e-9, 1e-9))  # JIT warm-up
     results = []
@@ -83,33 +113,58 @@ def main():
         f_old = np.fft.fftn(n_real, axes=tuple(i for i in range(3) if n[i] > 1))
         t_old = best_of(lambda: old_step(m, f_old, n, dx))
         t_new = best_of(lambda: new_step(m, f_new, n, dx))
+        jax_ms = {}
+        for name, dtype in (("f64", jnp.float64), ("f32", jnp.float32)):
+            fn, mj_ = jax_step(n, dx, dtype), jnp.asarray(m, dtype)
+            jax_ms[name] = round(best_of(lambda: fn(mj_), repeat=5, number=2) / 100 * 1e3, 3)
         row = {
             "mesh": "x".join(map(str, n)),
             "step_old_ms": round(t_old * 1e3, 2),
             "step_new_ms": round(t_new * 1e3, 2),
             "step_speedup": round(t_old / t_new, 1),
+            "step_jax_f64_ms": jax_ms["f64"],
+            "step_jax_f32_ms": jax_ms["f32"],
             "tensor_old_serial_s": None if t_tensor_old is None else round(t_tensor_old, 2),
             "tensor_new_s": round(t_tensor_new, 4),
         }
         print(row)
         results.append(row)
-    with open(os.path.join(OUT, "benchmark.json"), "w") as fh:
-        json.dump({"cpu_count": os.cpu_count(), "results": results}, fh, indent=2)
+    with open(os.path.join(OUT, f"benchmark_{machine}.json"), "w") as fh:
+        json.dump({"machine": machine, "cpu_count": os.cpu_count(), "jax_device": device, "results": results}, fh, indent=2)
 
-    fig, ax = plt.subplots(figsize=(6.5, 3.8))
-    x = np.arange(len(results))
-    ax.bar(x - 0.2, [r["step_old_ms"] for r in results], 0.4, label="original NumPy", color="#999")
-    ax.bar(x + 0.2, [r["step_new_ms"] for r in results], 0.4, label="numba + rfft", color="#1f77b4")
-    for i, r in enumerate(results):
-        ax.text(i + 0.2, r["step_new_ms"], f'{r["step_speedup"]}x', ha="center", va="bottom", fontsize=8)
-    ax.set_xticks(x, [r["mesh"] for r in results])
+
+def plot():
+    """Bar chart from benchmark_mac.json (NumPy, numba, JAX CPU) and benchmark_dgx.json (JAX GPU)."""
+    mac = json.load(open(os.path.join(OUT, "benchmark_mac.json")))["results"]
+    gpu_path = os.path.join(OUT, "benchmark_dgx.json")
+    gpu = json.load(open(gpu_path))["results"] if os.path.exists(gpu_path) else None
+    bars = [
+        ("original NumPy (M5 Pro)", [r["step_old_ms"] for r in mac], "#999"),
+        ("numba + rfft (M5 Pro, removed)", [r["step_new_ms"] for r in mac], "#1f77b4"),
+        ("JAX f64 (M5 Pro CPU)", [r["step_jax_f64_ms"] for r in mac], "#2ca02c"),
+    ]
+    if gpu:
+        bars += [("JAX f64 (GB10 GPU)", [r["step_jax_f64_ms"] for r in gpu], "#ff7f0e"),
+                 ("JAX f32 (GB10 GPU)", [r["step_jax_f32_ms"] for r in gpu], "#d62728")]
+    fig, ax = plt.subplots(figsize=(7.5, 4.2))
+    x, w = np.arange(len(mac)), 0.8 / len(bars)
+    for k, (label, vals, color) in enumerate(bars):
+        pos = x - 0.4 + (k + 0.5) * w
+        ax.bar(pos, vals, w, label=label, color=color)
+        if k:
+            for i, v in enumerate(vals):
+                ax.text(pos[i], v, f"{mac[i]['step_old_ms'] / v:.0f}x", ha="center", va="bottom", fontsize=7)
+    ax.set_xticks(x, [r["mesh"] for r in mac])
     ax.set_yscale("log")
     ax.set_ylabel("time per LLG step (ms)")
-    ax.set_title(f"h_eff + Euler LLG step ({os.cpu_count()} cores)")
-    ax.legend()
+    ax.set_title("h_eff + Euler LLG step (speed-up over the original NumPy)")
+    ax.legend(fontsize=8)
     fig.tight_layout()
     fig.savefig(os.path.join(OUT, "benchmark.png"), dpi=200)
 
 
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:] == ["plot"]:
+        plot()
+    else:
+        main(sys.argv[1] if len(sys.argv) > 1 else "mac")

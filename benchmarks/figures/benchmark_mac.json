@@ -1,0 +1,37 @@
+{
+  "machine": "mac",
+  "cpu_count": 18,
+  "jax_device": "cpu",
+  "results": [
+    {
+      "mesh": "100x25x1",
+      "step_old_ms": 1.14,
+      "step_new_ms": 0.48,
+      "step_speedup": 2.4,
+      "step_jax_f64_ms": 0.166,
+      "step_jax_f32_ms": 0.114,
+      "tensor_old_serial_s": 11.5,
+      "tensor_new_s": 0.0022
+    },
+    {
+      "mesh": "256x256x1",
+      "step_old_ms": 37.21,
+      "step_new_ms": 1.33,
+      "step_speedup": 27.9,
+      "step_jax_f64_ms": 1.525,
+      "step_jax_f32_ms": 1.387,
+      "tensor_old_serial_s": null,
+      "tensor_new_s": 0.0243
+    },
+    {
+      "mesh": "64x64x16",
+      "step_old_ms": 87.48,
+      "step_new_ms": 2.33,
+      "step_speedup": 37.5,
+      "step_jax_f64_ms": 2.774,
+      "step_jax_f32_ms": 1.759,
+      "tensor_old_serial_s": null,
+      "tensor_new_s": 0.0251
+    }
+  ]
+}

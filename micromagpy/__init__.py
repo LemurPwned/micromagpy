@@ -1,4 +1,4 @@
-"""A small finite-difference micromagnetic simulator built on NumPy, numba and SciPy."""
+"""A small finite-difference micromagnetic simulator built on NumPy, SciPy and JAX."""
 
 from importlib.metadata import PackageNotFoundError, version
 

@@ -5,8 +5,9 @@
 [![tests](https://github.com/LemurPwned/micromagpy/actions/workflows/tests.yml/badge.svg)](https://github.com/LemurPwned/micromagpy/actions/workflows/tests.yml)
 [![License: LGPL v3+](https://img.shields.io/badge/license-LGPL--3.0--or--later-blue)](https://github.com/LemurPwned/micromagpy/blob/master/COPYING.LESSER)
 
-A small finite-difference micromagnetic simulator in Python. Effective fields
-and LLG updates are fused [numba](https://numba.pydata.org/) kernels, the
+A small finite-difference micromagnetic simulator in Python. The time loop
+runs as one compiled [JAX](https://github.com/jax-ml/jax) program on the CPU
+or GPU (with a vectorised NumPy reference path), the
 demagnetising field is an FFT convolution with the Newell tensor, and the
 package adds adaptive solvers, energy minimisation, spin-orbit and spin-transfer
 torques, and thermal and 1/f noise.
@@ -57,10 +58,9 @@ pip install -e ".[test,examples]"
 pre-commit install                    # optional: formatting and lint hooks
 ```
 
-The first call of each numba kernel compiles it. Compiled kernels are cached
-on disk (`cache=True`), so later runs start quickly. The FFTs use
-`scipy.fft` with all cores; set `MICROMAGPY_FFT_WORKERS` to limit them and
-`NUMBA_NUM_THREADS` to limit the numba kernels.
+For an NVIDIA GPU install `pip install "micromagpy[cuda]"` (JAX with CUDA 13).
+The NumPy path's FFTs use `scipy.fft` with all cores; set
+`MICROMAGPY_FFT_WORKERS` to limit them.
 
 ## Quickstart: standard problem #4
 
@@ -122,7 +122,7 @@ m = np.where(disk, m, 0.0)             # a disk; cells outside it are empty
 
 `compute_demag_tensor(n, dx)` builds the Newell tensor (Newell et al.,
 J. Geophys. Res. 98, 9551, 1993) and returns it already in Fourier space. The
-`f` and `g` functions are evaluated once per node by numba, in parallel, and
+`f` and `g` functions are evaluated once per node (vectorised NumPy), and
 the 64-term sum becomes a separable second difference. The convolution uses
 real FFTs (`scipy.fft`, multithreaded). Each axis is padded to a fast size of
 at least `2n - 1` (for example 199 becomes 200), and axes with a single cell
@@ -178,6 +178,30 @@ be a 3-vector, an array of shape `n + (3,)` or, for `simulate`, a callable
 h_ext = lambda t: np.array([0.0, 0.0, 1e4 * np.sin(2 * np.pi * 5e9 * t)])
 ```
 
+### Interfacial DMI
+
+`D` (J/m²) switches on the interfacial Dzyaloshinskii-Moriya interaction of a
+film with normal z, in `h_eff`, `simulate`, `relax`, `energies` and the JAX
+`make_field`. The sign convention is MuMax3's `Dind`. The energy density
+`D [m_z ∇·m − (m·∇) m_z]` is discretised on nearest-neighbour bonds:
+
+- Inside the magnet the field is the central difference
+  `2D/(mu0 Ms) (∂x m_z, ∂y m_z, −∂x m_x − ∂y m_y)`.
+- At mesh edges and next to empty cells, the missing bonds give the free-edge
+  condition `∂m/∂n = D/(2A) (z × n) × m`.
+- The field is the exact gradient of `energies(...)["dmi"]`.
+
+The edge tilt of a PMA strip converges to Rohart & Thiaville's
+`sin θ = D / 2√(AK)` at first order in the cell size (`tests/test_dmi.py`).
+Use cells well below the DMI length `2A/D`.
+
+```python
+from micromagpy.fields import compute_hdmi
+
+h_dmi = compute_hdmi(D=2e-3, ms=ms, m=m, dx=dx)
+res = relax(m, dx, ms, A=A, K=K, D=2e-3)   # or simulate(..., D=2e-3)
+```
+
 ### Solvers
 
 `simulate(m, dx, ms, A, alpha, dt, steps, ...)` integrates the LLG equation:
@@ -208,7 +232,7 @@ The single steps are also available on their own:
 
 ### Energies and relaxation
 
-`energies` returns the exchange, demag, anisotropy and Zeeman energies (J)
+`energies` returns the exchange, DMI, demag, anisotropy and Zeeman energies (J)
 and their sum. `relax` minimises the energy by integrating the
 precession-free flow `dm/dt = -gamma m x (m x H)` with adaptive steps, until
 `max |m x H| < torque_tol * Ms`.
@@ -352,6 +376,31 @@ res = simulate(m, dx, ms, 1.3e-11, alpha, 1e-12, 100, K=8e5, h_ext=(2e4, 0, 0),
                torques=[sot, stt], solver="rk45")
 ```
 
+### Multilayers and interlayer exchange coupling
+
+```python
+import jax.numpy as jnp
+from micromagpy.stack import Ellipse, Layer, Spacer, Stack
+
+pillar = Ellipse(64e-9, 64e-9)                       # or Bar(lx, ly); centred, lengths in m
+saf = Stack([Layer(pillar, 1.0e-9, ms=8e5, A=1.5e-11, K=9e5),
+             Spacer(0.8e-9, J1=-1e-3, J2=0.0),         # IEC, J/m^2 (cmtj convention)
+             Layer(pillar, 1.2e-9, ms=9e5, A=1.5e-11, K=8e5)], cell=(4e-9, 4e-9))
+m = saf.relax(saf.uniform([(0, 0, 1), (0, 0, -1)]), h_ext=(0, 0, 5e4))["m"]   # (layers, nx, ny, 3)
+out = saf.run(m, dt=1e-12, steps=5000, h_ext=lambda t: jnp.array([1e4, 0, 5e4]), solver="rk45")
+out["m_avg"]                                          # (records, layers, 3)
+```
+
+Each layer is one cell thick, and all layers share the x/y grid. The demag
+includes every layer's field on every other layer: Newell tensors for boxes of
+different thickness at the real gaps, with one FFT per layer and step. IEC
+couples the layers on either side of a spacer, cell by cell:
+H = (J1 + 2 J2 m·m′) m′ / (μ0 Ms t). The constructor precomputes everything,
+and J1, J2, fields, torques and temperature are arguments, so sweeps `jit` and
+`vmap` without recompiling. Damping, thermal field and SOT amplitudes can
+differ per layer. `Stack(..., interlayer_demag=False)` drops the interlayer
+dipolar field, as macrospin codes such as cmtj do.
+
 ### Analysis helpers
 
 ```python
@@ -368,33 +417,122 @@ print(fit_spectral_exponent(f, gen.theoretical_psd(f), f_min=1e8, f_max=1e10))  
 
 ## Performance
 
-The time per step comes from the fused numba kernels (exchange, anisotropy,
-LLG update and renormalisation in one pass, no temporaries) and real FFTs on
-fast padded sizes. The original code computed the demag tensor in pure Python;
-here it is a parallel numba node evaluation followed by a stencil.
+micromagpy has two paths with the same discretisation:
 
-From [`benchmarks/benchmark.py`](https://github.com/LemurPwned/micromagpy/blob/master/benchmarks/benchmark.py)
-on 4 cores. A step is `h_eff` (demag, exchange) plus one Euler LLG update.
-Results are in [`benchmarks/figures/benchmark.json`](https://github.com/LemurPwned/micromagpy/blob/master/benchmarks/figures/benchmark.json):
+- **JAX** ([`micromagpy/jax_backend.py`](https://github.com/LemurPwned/micromagpy/blob/master/micromagpy/jax_backend.py)):
+  the effective field, the LLG right-hand side and the solver are traced once
+  and run as one compiled loop on the CPU or GPU, and independent runs batch
+  with `jax.vmap`. Use it for anything long or swept.
+- **NumPy reference** (`simulate`, `energy.relax`, `fields.*`): vectorised
+  NumPy with real FFTs (`scipy.fft`), one Python iteration per step. It takes
+  arbitrary Python `h_ext` callables, callbacks and stateful noise objects, and
+  needs no compilation (the standard problem #4 quickstart runs in 4.7 s on an
+  M5 Pro).
 
-| mesh | step, original NumPy | step, micromagpy | speed-up | demag tensor, original (serial) | demag tensor, micromagpy |
-| --- | --- | --- | --- | --- | --- |
-| 100x25x1 | 2.94 ms | 0.33 ms | 8.9x | 26.13 s | 4.7 ms |
-| 256x256x1 | 126.31 ms | 9.17 ms | 13.8x | not run | 0.128 s |
-| 64x64x16 | 250.4 ms | 17.56 ms | 14.3x | not run | 0.122 s |
+The reference path used to be fused numba kernels. Against them, JAX on the
+CPU is 3x faster for small meshes and up to 20 % slower for large ones, and on
+the GPU it is faster everywhere; one backend is easier to keep correct, so
+numba was removed. The numba numbers below are kept for comparison. The demag tensor is computed once per mesh: the 64-term
+Newell sum becomes `f`/`g` evaluated once per node (vectorised NumPy) and a
+separable second difference (0.1 s for 64x64x16; the original pure-Python code
+took 26 s for 100x25x1).
+
+From [`benchmarks/benchmark.py`](https://github.com/LemurPwned/micromagpy/blob/master/benchmarks/benchmark.py):
+one step is `h_eff` (demag, exchange) plus one Euler LLG update. JAX steps are
+timed inside a `lax.scan`, as `jax_backend.run` integrates. Results are in
+`benchmarks/figures/benchmark_mac.json` (Apple M5 Pro, 18 cores) and
+`benchmark_dgx.json` (NVIDIA DGX Spark, GB10 GPU):
+
+| mesh | original NumPy | numba (removed) | JAX f64, M5 Pro CPU | JAX f64, GB10 | JAX f32, GB10 | demag tensor, original | demag tensor, numba |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 100x25x1 | 1.14 ms | 0.48 ms (2x) | 0.166 ms (7x) | 0.092 ms (12x) | 0.039 ms (29x) | 11.5 s | 2 ms |
+| 256x256x1 | 37.21 ms | 1.33 ms (28x) | 1.525 ms (24x) | 0.732 ms (51x) | 0.123 ms (303x) | not run | 24 ms |
+| 64x64x16 | 87.48 ms | 2.33 ms (38x) | 2.774 ms (32x) | 1.511 ms (58x) | 0.35 ms (250x) | not run | 25 ms |
+
+Times per step on the M5 Pro unless marked GB10; speed-ups are relative to the original NumPy on the M5 Pro. Demag tensor times on the M5 Pro; the vectorised NumPy version that replaced numba takes 6 ms for 100x25x1 and 0.1 s for 64x64x16.
 
 ![benchmark](https://raw.githubusercontent.com/LemurPwned/micromagpy/master/benchmarks/figures/benchmark.png)
+
+### JAX backend (GPU, batched sweeps)
+
+[`micromagpy/jax_backend.py`](https://github.com/LemurPwned/micromagpy/blob/master/micromagpy/jax_backend.py)
+(`pip install "micromagpy[cuda]"` for an NVIDIA GPU) runs the same
+discretisation as the NumPy path, as one compiled loop, and batches
+independent runs with `jax.vmap`:
+
+- **Fields:** Newell demag, Neumann exchange, uniaxial anisotropy and interfacial DMI.
+- **Torques:** SOT (`sot`) and STT (`stt`).
+- **Noise:** the thermal field (`sigma`) and coloured 1/f field noise
+  (`coloured_noise(ColouredNoiseField(...))`, OU generator), drawn from the
+  run's PRNG key inside the compiled loop.
+- **Solvers:** `run` integrates with Heun, RK4 or adaptive Dormand-Prince (`solver="rk45"`). `relax` is the energy minimiser.
+
+`relax` and `run` can be jitted, vmapped and put inside a `lax.scan`, so a whole
+hysteresis or FMR field sweep compiles into one call. `tests/test_jax.py` checks
+them against `simulate` and `energy.relax`. Fields and the Heun/RK4 trajectories
+agree to 1e-10, and the RK45 and relax results agree to 1e-9 with the same
+number of accepted steps.
+
+```python
+# hysteresis sweep: relax at every field, starting from the previous state
+field = mj.make_field(n, dx, ms, A, K=Ku, kaxis=(1, 0, 0))
+point = lambda m, h: (lambda r: (r["m"], r["m"][..., 0].mean()))(
+    mj.relax(m, field, ms, h_ext=jnp.array([h, 0, 0]), torque_tol=1e-4, tol=1e-6))
+mx = jax.jit(lambda m0, H: jax.lax.scan(point, m0, H)[1])(m0, H_values)
+```
+
+```python
+import jax, jax.numpy as jnp
+from micromagpy import jax_backend as mj
+
+field = mj.make_field(n, dx, ms, A, K=Ku, kaxis=(0, 0, 1), dtype=jnp.float32)
+sigma = mj.thermal_sigma(dx, ms, alpha, 300.0, dt)
+sweep = jax.jit(jax.vmap(lambda H, key: mj.run(
+    m0, field, alpha, dt, 20_000, h_ext=lambda t: jnp.array([0, 0, 1.0]) * H, sigma=sigma, key=key)["m_avg"]))
+m_avg = sweep(H_values, jax.random.split(jax.random.PRNGKey(0), len(H_values)))
+```
+
+From [`benchmarks/benchmark_jax.py`](https://github.com/LemurPwned/micromagpy/blob/master/benchmarks/benchmark_jax.py)
+(time per Heun step of one simulation, and 64 thermal runs of a 16x16x1 mesh,
+2000 steps each, e.g. a field sweep; measured against the former numba path).
+Machines: Apple M5 Pro (18 cores), NVIDIA DGX Spark (GB10 GPU, 20-core Grace CPU):
+
+| mesh | numba, M5 Pro | numba, Grace | JAX f64, GB10 | JAX f32, GB10 |
+| --- | --- | --- | --- | --- |
+| 100x25x1 | 2.25 ms | 1.24 ms | 0.18 ms | 0.069 ms |
+| 256x256x1 | 7.9 ms | 18.4 ms | 1.41 ms | 0.24 ms |
+| 64x64x16 | 16.3 ms | 24.3 ms | 3.06 ms | 0.73 ms |
+| 512x512x1 | 27.9 ms | 30.9 ms | 7.6 ms | 1.97 ms |
+| 1024x1024x1 | 95.6 ms | 96.3 ms | 35.6 ms | 12.2 ms |
+| 64 x 16x16x1 thermal runs | 221 s (11.5 s in a 1-thread process pool) | 35.5 s | 0.69 s | 0.20 s |
+
+On a CPU the JAX backend ranged from 1.3x slower (1024x1024, float64) to 3x
+faster (small meshes, no per-step Python overhead) than numba for one
+simulation, and 6-40x faster for batches of small meshes.
+On the GPU, float32 is 3-6x faster than float64 (the GB10 has little FP64
+throughput).
+
+![benchmark_jax](https://raw.githubusercontent.com/LemurPwned/micromagpy/master/benchmarks/figures/benchmark_jax.png)
 
 ## Curated examples
 
 [`examples/curated/`](https://github.com/LemurPwned/micromagpy/tree/master/examples/curated)
 holds micromagnetic versions of the
-[cmtj curated examples](https://github.com/LemurPwned/cmtj/tree/master/curated-examples):
-1/f generator spectra, seeded reproducible noise, FMR, a spin-torque
-oscillator, SOT switching loops, thermal noise of PMA / IMA domains with dispersed
-anisotropy at 300 K and 50 K (with animated domain maps and live noise spectra),
-and noise spectrograms. Figures, one page per example and run times are in
-[`examples/curated/results/`](https://github.com/LemurPwned/micromagpy/tree/master/examples/curated/results).
+[cmtj curated examples](https://github.com/LemurPwned/cmtj/tree/master/curated-examples),
+in topic folders with their figures, one page per example and run times in
+each folder's `results/`:
+
+* `noise/`: 1/f generator spectra, seeded reproducible noise, thermal noise of
+  PMA / IMA domains with dispersed anisotropy (animated), noise spectrograms;
+* `dynamics/`: FMR field scan, spin-torque oscillator, IEC-coupled
+  oscillations of two layers, IEC synchronising two PMA layers with
+  different Ku;
+* `switching/`: field hysteresis, SOT switching loops, SOT switching phase
+  diagram at 300 K, a p-bit (the last two batched with JAX), Co/Ru/Co SAF
+  loops and Co/Pt/Co out-of-plane loops (multilayer `Stack` with IEC);
+* `transport/`: Rxx / Rxy magnetoresistance sweeps and spin-diode
+  (mixing voltage) field scans (JAX).
+
 The scripts need the `examples` extra (`pip install "micromagpy[examples]"`).
 
 ## Testing

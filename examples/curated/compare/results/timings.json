@@ -1,0 +1,64 @@
+{
+  "ahe_loops": {
+    "points": 60,
+    "runs": 8,
+    "seconds": 10.81,
+    "solver": "cmtj RK4 15 ns/point"
+  },
+  "fmr_basic": {
+    "fields": 100,
+    "seconds": 1.81,
+    "solver": "cmtj RK4"
+  },
+  "iec_coupling": {
+    "runs": 2,
+    "seconds": 0.49,
+    "solver": "cmtj RK4",
+    "time_ns": 29.999999999999996
+  },
+  "magnetoresistance": {
+    "points": 400,
+    "seconds": 9.3,
+    "solver": "cmtj RK4, 10 ns per field"
+  },
+  "p_bit": {
+    "seconds": 7.3,
+    "solver": "cmtj Heun, process pool",
+    "steps": 1000000,
+    "trajectories": 168
+  },
+  "saf_hysteresis": {
+    "points": 240,
+    "runs": 2,
+    "seconds": 3.42,
+    "solver": "cmtj Smit-Beljers relax_field_path"
+  },
+  "sot_phase_diagram": {
+    "seconds": 7.49,
+    "simulations": 20000,
+    "solver": "cmtj Heun, process pool",
+    "steps": 20000
+  },
+  "sot_switching": {
+    "loops": 3,
+    "points_per_loop": 326,
+    "seconds": 13.03,
+    "solver": "cmtj RK4"
+  },
+  "spin_diode": {
+    "seconds": 9.19,
+    "simulations": 1000,
+    "solver": "cmtj RK4, process pool",
+    "steps": 200000
+  },
+  "sto": {
+    "currents": 25,
+    "seconds": 0.37,
+    "solver": "cmtj RK4"
+  },
+  "switching_hysteresis": {
+    "points": 480,
+    "seconds": 10.88,
+    "solver": "cmtj RK4, 10 ns per field"
+  }
+}

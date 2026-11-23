@@ -34,6 +34,7 @@ def simulate(
     progress: bool = False,
     tol: float = 1e-6,
     torques: Sequence = (),
+    D: float = 0.0,
 ):
     """Integrate the (stochastic) LLG equation.
 
@@ -52,6 +53,7 @@ def simulate(
         thermal noise), ``"rk4"`` (4 evaluations, deterministic or coloured
         noise only, most stable) or ``"euler"`` (1 evaluation; unstable for low
         damping and small cells, see :func:`micromagpy.llg.rk4`).
+    :param D: interfacial DMI constant (J/m^2), see :func:`micromagpy.fields.compute_hdmi`.
     :param torques: SOT / STT terms (:mod:`micromagpy.torques`), evaluated at
         every stage of every solver; amplitudes may be time dependent.
     :param callback: ``callback(i, t, m)`` called every ``record_every`` steps.
@@ -77,7 +79,7 @@ def simulate(
     fixed_sources = [s for s in noise if s not in m_dependent]
 
     def deterministic(mm):
-        h = h_eff(A=A, ms=ms, K=K, kaxis=kaxis, m=mm, m_pad=None, f_n_demag=f_n_demag, n=n, dx=dx)
+        h = h_eff(A=A, ms=ms, K=K, kaxis=kaxis, m=mm, m_pad=None, f_n_demag=f_n_demag, n=n, dx=dx, D=D)
         for src in m_dependent:
             h += src.field(mm)
         return h

@@ -1,0 +1,52 @@
+{
+  "fmr_basic": {
+    "backend": "jax float64 on cpu",
+    "fields": 100,
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "rk45_steps_total": 799888,
+    "samples_per_field": 4000,
+    "seconds": 155.66,
+    "solver": "jax relax + rk45"
+  },
+  "iec_coupling": {
+    "backend": "jax float64 on cpu",
+    "mesh": [
+      2,
+      16,
+      16
+    ],
+    "rk45_steps_total": 119205,
+    "seconds": 111.59,
+    "solver": "jax rk45 (stack)",
+    "steps": 30000
+  },
+  "iec_sync": {
+    "backend": "jax float64 on cpu",
+    "mesh": [
+      2,
+      8,
+      8
+    ],
+    "runs": 27,
+    "seconds": 39.08,
+    "solver": "jax rk45 (stack, vmap)",
+    "steps": 5000
+  },
+  "sto": {
+    "backend": "jax float64 on NVIDIA GB10",
+    "currents": 25,
+    "mesh": [
+      16,
+      16,
+      1
+    ],
+    "rk45_steps_total": 299975,
+    "seconds": 8.72,
+    "solver": "jax rk45 (vmap)",
+    "time_per_current_ns": 6.0
+  }
+}

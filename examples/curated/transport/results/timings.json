@@ -1,0 +1,25 @@
+{
+  "magnetoresistance": {
+    "backend": "jax float64 on cpu",
+    "mesh": [
+      32,
+      32,
+      1
+    ],
+    "points": 400,
+    "relax_steps_total": 111777,
+    "seconds": 70.91,
+    "solver": "jax relax"
+  },
+  "spin_diode": {
+    "backend": "jax vmap rk4 float32 on NVIDIA GB10",
+    "mesh": [
+      32,
+      32,
+      1
+    ],
+    "seconds": 1409.47,
+    "simulations": 600,
+    "steps": 200000
+  }
+}
