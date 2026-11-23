@@ -1,99 +1,37 @@
 """Landau-Lifshitz-Gilbert time stepping.
 
-The right-hand side, the explicit update and the renormalisation of ``m`` are
-fused into single numba kernels; this removes the four ``np.cross`` calls and
-the temporaries of the pure NumPy version.
+Vectorised NumPy reference path; :mod:`micromagpy.jax_backend` runs the
+same equations compiled (CPU or GPU).
 """
 
 from math import sqrt
 
 import numpy as np
-from numba import njit, prange
 
 from .config import DTYPE, GAMMA
 from .fields import h_eff
 
 
-@njit(parallel=True, cache=True)
 def _ll_rhs(m, h, pref, alpha, out):
     """out = -pref (m x h) - alpha pref m x (m x h)."""
-    nx, ny, nz, _ = m.shape
-    for i in prange(nx):
-        for j in range(ny):
-            for k in range(nz):
-                mx, my, mz = m[i, j, k, 0], m[i, j, k, 1], m[i, j, k, 2]
-                hx, hy, hz = h[i, j, k, 0], h[i, j, k, 1], h[i, j, k, 2]
-                cx = my * hz - mz * hy
-                cy = mz * hx - mx * hz
-                cz = mx * hy - my * hx
-                ddx = my * cz - mz * cy
-                ddy = mz * cx - mx * cz
-                ddz = mx * cy - my * cx
-                out[i, j, k, 0] = -pref * (cx + alpha * ddx)
-                out[i, j, k, 1] = -pref * (cy + alpha * ddy)
-                out[i, j, k, 2] = -pref * (cz + alpha * ddz)
+    c = np.cross(m, h)
+    out[...] = -pref * (c + alpha * np.cross(m, c))
 
 
-@njit(parallel=True, cache=True)
 def _llg_torque_euler(m, h, pref, alpha, hfl, hdl, p, dt, out):
     """Explicit Euler step of LLG + torque ``afl m x p + adl m x (m x p)``, then renorm.
 
     ``hfl`` / ``hdl`` here are the combined coefficients ``a_fl`` / ``a_dl``
     (see :mod:`micromagpy.torques`). Cells with ``|m| == 0`` are left untouched.
     """
-    nx, ny, nz, _ = m.shape
-    px, py, pz = p[0], p[1], p[2]
-    for i in prange(nx):
-        for j in range(ny):
-            for k in range(nz):
-                mx, my, mz = m[i, j, k, 0], m[i, j, k, 1], m[i, j, k, 2]
-                hx, hy, hz = h[i, j, k, 0], h[i, j, k, 1], h[i, j, k, 2]
-                cx = my * hz - mz * hy
-                cy = mz * hx - mx * hz
-                cz = mx * hy - my * hx
-                ddx = my * cz - mz * cy
-                ddy = mz * cx - mx * cz
-                ddz = mx * cy - my * cx
-                # m x p and m x (m x p)
-                qx = my * pz - mz * py
-                qy = mz * px - mx * pz
-                qz = mx * py - my * px
-                rx = my * qz - mz * qy
-                ry = mz * qx - mx * qz
-                rz = mx * qy - my * qx
-                nmx = mx + dt * (
-                    -pref * (cx + alpha * ddx) - pref * (hfl * qx + hdl * rx)
-                )
-                nmy = my + dt * (
-                    -pref * (cy + alpha * ddy) - pref * (hfl * qy + hdl * ry)
-                )
-                nmz = mz + dt * (
-                    -pref * (cz + alpha * ddz) - pref * (hfl * qz + hdl * rz)
-                )
-                norm = sqrt(nmx * nmx + nmy * nmy + nmz * nmz)
-                if norm > 0.0:
-                    out[i, j, k, 0] = nmx / norm
-                    out[i, j, k, 1] = nmy / norm
-                    out[i, j, k, 2] = nmz / norm
-                else:
-                    out[i, j, k, 0] = nmx
-                    out[i, j, k, 1] = nmy
-                    out[i, j, k, 2] = nmz
+    c, q = np.cross(m, h), np.cross(m, np.broadcast_to(p, m.shape))
+    out[...] = m + dt * (-pref * (c + alpha * np.cross(m, c)) - pref * (hfl * q + hdl * np.cross(m, q)))
+    _normalize(out)
 
 
-@njit(parallel=True, cache=True)
 def _normalize(m):
-    nx, ny, nz, _ = m.shape
-    for i in prange(nx):
-        for j in range(ny):
-            for k in range(nz):
-                norm = sqrt(
-                    m[i, j, k, 0] ** 2 + m[i, j, k, 1] ** 2 + m[i, j, k, 2] ** 2
-                )
-                if norm > 0.0:
-                    m[i, j, k, 0] /= norm
-                    m[i, j, k, 1] /= norm
-                    m[i, j, k, 2] /= norm
+    norm = np.linalg.norm(m, axis=-1, keepdims=True)
+    np.divide(m, norm, out=m, where=norm > 0)
 
 
 _ZERO3 = np.zeros(3, dtype=DTYPE)

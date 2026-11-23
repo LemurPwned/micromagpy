@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "micromagpy"
-description = "A small finite-difference micromagnetic simulator built on NumPy, numba and SciPy."
+description = "A small finite-difference micromagnetic simulator built on NumPy, SciPy and JAX."
 dynamic = ["version"]
 authors = [
     { name = "LemurPwned", email = "lemurpwned@gmail.com" }
@@ -35,14 +35,14 @@ keywords = [
   "1/f noise",
 ]
 dependencies = [
-  "numba >= 0.68.1",
+  "jax >= 0.12.1",
   "numpy >= 2.5.5",
   "scipy >= 1.18.1",
 ]
 
 [project.optional-dependencies]
 test = ["pytest >= 9.2.0"]
-jax = ["jax >= 0.12.1"]
+cuda = ["jax[cuda13] >= 0.12.1"]
 examples = [
   "matplotlib >= 3.11.2",
   "tqdm >= 4.70.1",

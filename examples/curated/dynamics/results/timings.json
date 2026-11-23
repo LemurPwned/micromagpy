@@ -13,15 +13,15 @@
     "solver": "jax relax + rk45"
   },
   "sto": {
-    "backend": "jax float64 on cpu",
-    "currents": 8,
+    "backend": "jax float64 on NVIDIA GB10",
+    "currents": 25,
     "mesh": [
       16,
       16,
       1
     ],
-    "rk45_steps_total": 95992,
-    "seconds": 16.91,
+    "rk45_steps_total": 299975,
+    "seconds": 8.72,
     "solver": "jax rk45 (vmap)",
     "time_per_current_ns": 6.0
   }

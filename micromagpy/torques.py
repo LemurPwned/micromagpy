@@ -22,31 +22,15 @@ Hall bar or a nanopillar).
 from __future__ import annotations
 
 import numpy as np
-from numba import njit, prange
 
 from .config import DTYPE, ELECTRON_CHARGE, HBAR, MU0  # noqa: F401  (constants re-exported)
 from .drivers import as_driver
 
 
-@njit(parallel=True, cache=True)
 def _torque_kernel(m, p, afl, adl, pref, out):
     """out += -pref (afl m x p + adl m x (m x p))."""
-    nx, ny, nz, _ = m.shape
-    for i in prange(nx):
-        for j in range(ny):
-            for k in range(nz):
-                mx, my, mz = m[i, j, k, 0], m[i, j, k, 1], m[i, j, k, 2]
-                px, py, pz = p[i, j, k, 0], p[i, j, k, 1], p[i, j, k, 2]
-                qx = my * pz - mz * py
-                qy = mz * px - mx * pz
-                qz = mx * py - my * px
-                rx = my * qz - mz * qy
-                ry = mz * qx - mx * qz
-                rz = mx * qy - my * qx
-                a, b = afl[i, j, k], adl[i, j, k]
-                out[i, j, k, 0] -= pref * (a * qx + b * rx)
-                out[i, j, k, 1] -= pref * (a * qy + b * ry)
-                out[i, j, k, 2] -= pref * (a * qz + b * rz)
+    q = np.cross(m, p)
+    out -= pref * (afl[..., None] * q + adl[..., None] * np.cross(m, q))
 
 
 def _polarisation(p, n):

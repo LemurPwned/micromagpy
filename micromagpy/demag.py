@@ -12,43 +12,41 @@ every tensor component, 64 terms of the Newell ``f``/``g`` functions in pure
 Python. Each of those 64 terms is a second finite difference of ``f``/``g``
 along every axis, i.e. a separable ``[-1, 2, -1]`` stencil applied to values of
 the function on the (2n + 1) node grid. Here we evaluate ``f``/``g`` once per
-node (numba, in parallel) and apply the stencil with NumPy slicing, which is
+node (vectorised NumPy) and apply the stencil with NumPy slicing, which is
 equivalent up to floating point summation order but orders of magnitude faster.
 """
 
-from math import asinh, atan, pi, sqrt
-
 import numpy as np
-from numba import njit, prange
 
 from .config import DTYPE
 from .fft import fft_axes, padded_shape, rfftn
 
+pi = np.pi
+_EPS = 1e-18
 
-@njit(cache=True)
+
 def f(x, y, z):
-    eps = 1e-18
-    x, y, z = abs(x), abs(y), abs(z)
+    x, y, z = np.abs(x), np.abs(y), np.abs(z)
+    r = np.sqrt(x**2 + y**2 + z**2)
     return (
-        +y / 2.0 * (z**2 - x**2) * asinh(y / (sqrt(x**2 + z**2) + eps))
-        + z / 2.0 * (y**2 - x**2) * asinh(z / (sqrt(x**2 + y**2) + eps))
-        - x * y * z * atan(y * z / (x * sqrt(x**2 + y**2 + z**2) + eps))
-        + 1.0 / 6.0 * (2 * x**2 - y**2 - z**2) * sqrt(x**2 + y**2 + z**2)
+        +y / 2.0 * (z**2 - x**2) * np.arcsinh(y / (np.sqrt(x**2 + z**2) + _EPS))
+        + z / 2.0 * (y**2 - x**2) * np.arcsinh(z / (np.sqrt(x**2 + y**2) + _EPS))
+        - x * y * z * np.arctan(y * z / (x * r + _EPS))
+        + 1.0 / 6.0 * (2 * x**2 - y**2 - z**2) * r
     )
 
 
-@njit(cache=True)
 def g(x, y, z):
-    eps = 1e-18
-    z = abs(z)
+    z = np.abs(z)
+    r = np.sqrt(x**2 + y**2 + z**2)
     return (
-        +x * y * z * asinh(z / (sqrt(x**2 + y**2) + eps))
-        + y / 6.0 * (3.0 * z**2 - y**2) * asinh(x / (sqrt(y**2 + z**2) + eps))
-        + x / 6.0 * (3.0 * z**2 - x**2) * asinh(y / (sqrt(x**2 + z**2) + eps))
-        - z**3 / 6.0 * atan(x * y / (z * sqrt(x**2 + y**2 + z**2) + eps))
-        - z * y**2 / 2.0 * atan(x * z / (y * sqrt(x**2 + y**2 + z**2) + eps))
-        - z * x**2 / 2.0 * atan(y * z / (x * sqrt(x**2 + y**2 + z**2) + eps))
-        - x * y * sqrt(x**2 + y**2 + z**2) / 3.0
+        +x * y * z * np.arcsinh(z / (np.sqrt(x**2 + y**2) + _EPS))
+        + y / 6.0 * (3.0 * z**2 - y**2) * np.arcsinh(x / (np.sqrt(y**2 + z**2) + _EPS))
+        + x / 6.0 * (3.0 * z**2 - x**2) * np.arcsinh(y / (np.sqrt(x**2 + z**2) + _EPS))
+        - z**3 / 6.0 * np.arctan(x * y / (z * r + _EPS))
+        - z * y**2 / 2.0 * np.arctan(x * z / (y * r + _EPS))
+        - z * x**2 / 2.0 * np.arctan(y * z / (x * r + _EPS))
+        - x * y * r / 3.0
     )
 
 
@@ -63,23 +61,11 @@ _COMPONENTS = (
 )
 
 
-@njit(parallel=True, cache=True)
 def _node_values(use_g, n0, n1, n2, d0, d1, d2, p0, p1, p2):
     """Evaluate f or g on all nodes with offsets [-n_k, n_k] along each axis."""
-    s0, s1, s2 = 2 * n0 + 1, 2 * n1 + 1, 2 * n2 + 1
-    out = np.empty((s0, s1, s2), dtype=np.float64)
-    for a in prange(s0):
-        coord = np.empty(3)
-        for b in range(s1):
-            for c in range(s2):
-                coord[0] = (a - n0) * d0
-                coord[1] = (b - n1) * d1
-                coord[2] = (c - n2) * d2
-                if use_g:
-                    out[a, b, c] = g(coord[p0], coord[p1], coord[p2])
-                else:
-                    out[a, b, c] = f(coord[p0], coord[p1], coord[p2])
-    return out
+    coord = np.meshgrid(*(np.arange(-k, k + 1) * d for k, d in ((n0, d0), (n1, d1), (n2, d2))), indexing="ij", sparse=True)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return (g if use_g else f)(coord[p0], coord[p1], coord[p2])
 
 
 def _second_difference(arr: np.ndarray, axis: int) -> np.ndarray:

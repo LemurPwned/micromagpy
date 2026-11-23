@@ -51,55 +51,55 @@ Each cell below gives spectral centroid / spectral width / integrated noise rela
 
 | N \ σ | 0.0 | 0.2 | 0.5 |
 | --- | --- | --- | --- |
-| 1 | 29.1 GHz / 5.8 GHz / 1.00 | 32.2 GHz / 6.4 GHz / 0.90 | 37.8 GHz / 8.6 GHz / 0.70 |
-| 2 | 29.1 GHz / 5.8 GHz / 1.00 | 23.9 GHz / 9.6 GHz / 1.15 | 4.4 GHz / 8.1 GHz / 7.80 |
-| 4 | 29.1 GHz / 5.8 GHz / 1.00 | 25.0 GHz / 9.6 GHz / 1.21 | 16.5 GHz / 12.8 GHz / 1.84 |
-| 8 | 29.1 GHz / 5.8 GHz / 1.00 | 23.6 GHz / 10.3 GHz / 1.29 | 16.0 GHz / 12.5 GHz / 1.82 |
+| 1 | 29.3 GHz / 6.2 GHz / 1.00 | 32.7 GHz / 6.2 GHz / 1.07 | 37.3 GHz / 8.6 GHz / 0.72 |
+| 2 | 29.3 GHz / 6.2 GHz / 1.00 | 24.2 GHz / 10.2 GHz / 1.22 | 7.1 GHz / 9.6 GHz / 6.70 |
+| 4 | 29.3 GHz / 6.2 GHz / 1.00 | 24.6 GHz / 9.4 GHz / 1.31 | 15.4 GHz / 12.1 GHz / 2.31 |
+| 8 | 29.3 GHz / 6.2 GHz / 1.00 | 22.2 GHz / 10.5 GHz / 1.46 | 15.8 GHz / 12.7 GHz / 1.92 |
 
 **PMA, 50 K**
 
 | N \ σ | 0.0 | 0.2 | 0.5 |
 | --- | --- | --- | --- |
-| 1 | 30.6 GHz / 5.9 GHz / 1.00 | 33.8 GHz / 6.4 GHz / 0.92 | 39.4 GHz / 8.4 GHz / 0.76 |
-| 2 | 30.6 GHz / 5.9 GHz / 1.00 | 24.8 GHz / 10.1 GHz / 1.17 | 8.7 GHz / 11.5 GHz / 4.22 |
-| 4 | 30.6 GHz / 5.9 GHz / 1.00 | 26.5 GHz / 9.7 GHz / 1.22 | 16.8 GHz / 13.1 GHz / 1.91 |
-| 8 | 30.6 GHz / 5.9 GHz / 1.00 | 23.3 GHz / 10.7 GHz / 1.45 | 16.9 GHz / 12.7 GHz / 1.88 |
+| 1 | 30.9 GHz / 6.3 GHz / 1.00 | 34.2 GHz / 6.1 GHz / 1.12 | 39.2 GHz / 8.5 GHz / 0.78 |
+| 2 | 30.9 GHz / 6.3 GHz / 1.00 | 25.2 GHz / 10.1 GHz / 1.38 | 7.0 GHz / 9.9 GHz / 7.11 |
+| 4 | 30.9 GHz / 6.3 GHz / 1.00 | 25.9 GHz / 9.6 GHz / 1.34 | 15.7 GHz / 12.5 GHz / 2.41 |
+| 8 | 30.9 GHz / 6.3 GHz / 1.00 | 23.7 GHz / 10.9 GHz / 1.37 | 16.7 GHz / 12.7 GHz / 1.96 |
 
 **IMA, 300 K**
 
 | N \ σ | 0.0 | 0.2 | 0.5 |
 | --- | --- | --- | --- |
-| 1 | 10.8 GHz / 3.9 GHz / 1.00 | 11.1 GHz / 4.0 GHz / 0.96 | 11.4 GHz / 4.1 GHz / 0.91 |
-| 2 | 10.8 GHz / 3.9 GHz / 1.00 | 11.0 GHz / 4.0 GHz / 0.94 | 10.3 GHz / 4.3 GHz / 1.08 |
-| 4 | 10.8 GHz / 3.9 GHz / 1.00 | 11.0 GHz / 4.0 GHz / 0.98 | 10.1 GHz / 4.4 GHz / 1.03 |
-| 8 | 10.8 GHz / 3.9 GHz / 1.00 | 10.5 GHz / 3.9 GHz / 1.08 | 9.4 GHz / 4.2 GHz / 1.19 |
+| 1 | 10.9 GHz / 3.9 GHz / 1.00 | 11.0 GHz / 3.9 GHz / 0.98 | 11.2 GHz / 3.9 GHz / 0.98 |
+| 2 | 10.9 GHz / 3.9 GHz / 1.00 | 10.9 GHz / 3.9 GHz / 0.97 | 10.1 GHz / 4.2 GHz / 1.01 |
+| 4 | 10.9 GHz / 3.9 GHz / 1.00 | 11.0 GHz / 3.9 GHz / 1.04 | 10.1 GHz / 4.2 GHz / 1.13 |
+| 8 | 10.9 GHz / 3.9 GHz / 1.00 | 10.7 GHz / 3.9 GHz / 1.08 | 9.5 GHz / 3.9 GHz / 1.42 |
 
 **IMA, 50 K**
 
 | N \ σ | 0.0 | 0.2 | 0.5 |
 | --- | --- | --- | --- |
-| 1 | 11.5 GHz / 3.9 GHz / 1.00 | 11.7 GHz / 4.0 GHz / 0.97 | 12.0 GHz / 4.0 GHz / 0.95 |
-| 2 | 11.5 GHz / 3.9 GHz / 1.00 | 11.6 GHz / 4.1 GHz / 0.93 | 10.9 GHz / 4.3 GHz / 1.02 |
-| 4 | 11.5 GHz / 3.9 GHz / 1.00 | 11.6 GHz / 3.9 GHz / 1.01 | 10.6 GHz / 4.4 GHz / 1.06 |
-| 8 | 11.5 GHz / 3.9 GHz / 1.00 | 11.1 GHz / 3.9 GHz / 1.07 | 10.0 GHz / 4.2 GHz / 1.21 |
+| 1 | 11.4 GHz / 3.9 GHz / 1.00 | 11.5 GHz / 3.9 GHz / 0.98 | 11.7 GHz / 3.8 GHz / 0.98 |
+| 2 | 11.4 GHz / 3.9 GHz / 1.00 | 11.5 GHz / 3.9 GHz / 0.97 | 10.8 GHz / 4.2 GHz / 1.02 |
+| 4 | 11.4 GHz / 3.9 GHz / 1.00 | 11.5 GHz / 3.9 GHz / 0.99 | 10.6 GHz / 4.3 GHz / 1.06 |
+| 8 | 11.4 GHz / 3.9 GHz / 1.00 | 11.2 GHz / 3.9 GHz / 1.01 | 9.8 GHz / 4.0 GHz / 1.34 |
 
 ### Observations
 - **σ = 0:** the spectrum is identical for every N, as it must be. The bars are then the same material and exchange-coupled.
 - **PMA is very sensitive to anisotropy dispersion once there are several domains.** At N = 4–8 and σ = 0.5:
   - the spectral centroid falls from ~30 to ~16 GHz;
   - the width roughly doubles (6 → 12–13 GHz);
-  - the integrated noise grows ~1.8–1.9×.
+  - the integrated noise grows ~1.9–2.0×.
 - **Cause of the PMA change:** bars whose K drops below μ0Ms²/2 lose their perpendicular stiffness. They become soft, effectively in-plane, regions that add strong low-frequency noise.
-- **The N = 2, σ = 0.5 outlier:** in one realisation half of the element went soft, which gives a 7.8× rise at 300 K.
-- **IMA barely reacts:** the in-plane shape anisotropy dominates the small IMA K. The width stays ~4 GHz, and the integrated noise changes by at most ~1.2×, with the FMR line slightly red-shifted.
+- **The N = 2, σ = 0.5 outlier:** in one disorder realisation half of the element goes soft, which gives a 6.7× rise at 300 K and 7.1× at 50 K.
+- **IMA barely reacts:** the in-plane shape anisotropy dominates the small IMA K. The width stays ~4 GHz, and the integrated noise changes by at most ~1.4× (N = 8, σ = 0.5), with the FMR line slightly red-shifted.
 
 ## 300 K vs 50 K
 ![300 K vs 50 K](domain-noise-T300-vs-T50.png)
 
 - **Linear regime:** for a linear (small-fluctuation) thermal response, S(f)/T is independent of temperature and the noise ratio between 300 K and 50 K is 6.
-- **Most configurations follow it:** the measured ratio is 5.7–6.4 for both PMA and IMA, and the T-normalised spectra overlap (left panels).
+- **All configurations follow it:** the measured ratio is 5.5–6.7 for PMA and 5.9–6.4 for IMA, and the T-normalised spectra overlap (left panels).
 - **Thermal softening:** the FMR peak at 300 K sits slightly below the 50 K one, because thermal fluctuations reduce the effective anisotropy.
-- **The exception is PMA with N = 2 and σ = 0.5,** where the ratio is 11.8. The soft bar there responds non-linearly, so its noise grows faster than T. This ratio is a simple diagnostic for soft or nearly unstable regions.
+- **PMA with N = 2 and σ = 0.5** gives 5.9 here. An earlier run (numba path, other thermal draws) gave 11.8 for this case. The soft-bar case is realisation dependent, so more seeds are needed before reading a non-linear response into it.
 
 ## Animations
 N = 4 bars, σ = 0.5. Each GIF shows:
@@ -113,16 +113,8 @@ N = 4 bars, σ = 0.5. Each GIF shows:
 | IMA bars | ![](domain-noise-ima-T300.gif) | ![](domain-noise-ima-T50.gif) |
 | mixed PMA / IMA | ![](domain-noise-mixed-T300.gif) | ![](domain-noise-mixed-T50.gif) |
 
-## Timings (4-core container)
-| run | wall time |
-| --- | --- |
-| `domain_noise_gif_ima_T300` | 15.16 s |
-| `domain_noise_gif_ima_T50` | 12.06 s |
-| `domain_noise_gif_mixed_T300` | 14.84 s |
-| `domain_noise_gif_mixed_T50` | 11.9 s |
-| `domain_noise_gif_pma_T300` | 15.5 s |
-| `domain_noise_gif_pma_T50` | 12.23 s |
-| `domain_noise_sweep_ima_T300` | 609.32 s |
-| `domain_noise_sweep_ima_T50` | 583.12 s |
-| `domain_noise_sweep_pma_T300` | 604.71 s |
-| `domain_noise_sweep_pma_T50` | 596.08 s |
+## Timings (JAX float64, Mac M5 Pro CPU)
+| run | wall time | former numba path (4-core container) |
+| --- | --- | --- |
+| GIF, per case (100 frames) | 2.6–3.4 s | 12–16 s |
+| sweep, per mode and temperature (36 runs × 6 ns) | 134–182 s | 583–609 s |

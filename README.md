@@ -5,8 +5,9 @@
 [![tests](https://github.com/LemurPwned/micromagpy/actions/workflows/tests.yml/badge.svg)](https://github.com/LemurPwned/micromagpy/actions/workflows/tests.yml)
 [![License: LGPL v3+](https://img.shields.io/badge/license-LGPL--3.0--or--later-blue)](https://github.com/LemurPwned/micromagpy/blob/master/COPYING.LESSER)
 
-A small finite-difference micromagnetic simulator in Python. Effective fields
-and LLG updates are fused [numba](https://numba.pydata.org/) kernels, the
+A small finite-difference micromagnetic simulator in Python. The time loop
+runs as one compiled [JAX](https://github.com/jax-ml/jax) program on the CPU
+or GPU (with a vectorised NumPy reference path), the
 demagnetising field is an FFT convolution with the Newell tensor, and the
 package adds adaptive solvers, energy minimisation, spin-orbit and spin-transfer
 torques, and thermal and 1/f noise.
@@ -57,10 +58,9 @@ pip install -e ".[test,examples]"
 pre-commit install                    # optional: formatting and lint hooks
 ```
 
-The first call of each numba kernel compiles it. Compiled kernels are cached
-on disk (`cache=True`), so later runs start quickly. The FFTs use
-`scipy.fft` with all cores; set `MICROMAGPY_FFT_WORKERS` to limit them and
-`NUMBA_NUM_THREADS` to limit the numba kernels.
+For an NVIDIA GPU install `pip install "micromagpy[cuda]"` (JAX with CUDA 13).
+The NumPy path's FFTs use `scipy.fft` with all cores; set
+`MICROMAGPY_FFT_WORKERS` to limit them.
 
 ## Quickstart: standard problem #4
 
@@ -122,7 +122,7 @@ m = np.where(disk, m, 0.0)             # a disk; cells outside it are empty
 
 `compute_demag_tensor(n, dx)` builds the Newell tensor (Newell et al.,
 J. Geophys. Res. 98, 9551, 1993) and returns it already in Fourier space. The
-`f` and `g` functions are evaluated once per node by numba, in parallel, and
+`f` and `g` functions are evaluated once per node (vectorised NumPy), and
 the 64-term sum becomes a separable second difference. The convolution uses
 real FFTs (`scipy.fft`, multithreaded). Each axis is padded to a fast size of
 at least `2n - 1` (for example 199 becomes 200), and axes with a single cell
@@ -392,33 +392,54 @@ print(fit_spectral_exponent(f, gen.theoretical_psd(f), f_min=1e8, f_max=1e10))  
 
 ## Performance
 
-The time per step comes from the fused numba kernels (exchange, anisotropy,
-LLG update and renormalisation in one pass, no temporaries) and real FFTs on
-fast padded sizes. The original code computed the demag tensor in pure Python;
-here it is a parallel numba node evaluation followed by a stencil.
+micromagpy has two paths with the same discretisation:
 
-From [`benchmarks/benchmark.py`](https://github.com/LemurPwned/micromagpy/blob/master/benchmarks/benchmark.py)
-on 4 cores. A step is `h_eff` (demag, exchange) plus one Euler LLG update.
-Results are in [`benchmarks/figures/benchmark.json`](https://github.com/LemurPwned/micromagpy/blob/master/benchmarks/figures/benchmark.json):
+- **JAX** ([`micromagpy/jax_backend.py`](https://github.com/LemurPwned/micromagpy/blob/master/micromagpy/jax_backend.py)):
+  the effective field, the LLG right-hand side and the solver are traced once
+  and run as one compiled loop on the CPU or GPU, and independent runs batch
+  with `jax.vmap`. Use it for anything long or swept.
+- **NumPy reference** (`simulate`, `energy.relax`, `fields.*`): vectorised
+  NumPy with real FFTs (`scipy.fft`), one Python iteration per step. It takes
+  arbitrary Python `h_ext` callables, callbacks and stateful noise objects, and
+  needs no compilation (the standard problem #4 quickstart runs in 4.7 s on an
+  M5 Pro).
 
-| mesh | step, original NumPy | step, micromagpy | speed-up | demag tensor, original (serial) | demag tensor, micromagpy |
-| --- | --- | --- | --- | --- | --- |
-| 100x25x1 | 2.94 ms | 0.33 ms | 8.9x | 26.13 s | 4.7 ms |
-| 256x256x1 | 126.31 ms | 9.17 ms | 13.8x | not run | 0.128 s |
-| 64x64x16 | 250.4 ms | 17.56 ms | 14.3x | not run | 0.122 s |
+The reference path used to be fused numba kernels. Against them, JAX on the
+CPU is 3x faster for small meshes and up to 20 % slower for large ones, and on
+the GPU it is faster everywhere; one backend is easier to keep correct, so
+numba was removed. The numba numbers below are kept for comparison. The demag tensor is computed once per mesh: the 64-term
+Newell sum becomes `f`/`g` evaluated once per node (vectorised NumPy) and a
+separable second difference (0.1 s for 64x64x16; the original pure-Python code
+took 26 s for 100x25x1).
+
+From [`benchmarks/benchmark.py`](https://github.com/LemurPwned/micromagpy/blob/master/benchmarks/benchmark.py):
+one step is `h_eff` (demag, exchange) plus one Euler LLG update. JAX steps are
+timed inside a `lax.scan`, as `jax_backend.run` integrates. Results are in
+`benchmarks/figures/benchmark_mac.json` (Apple M5 Pro, 18 cores) and
+`benchmark_dgx.json` (NVIDIA DGX Spark, GB10 GPU):
+
+| mesh | original NumPy | numba (removed) | JAX f64, M5 Pro CPU | JAX f64, GB10 | JAX f32, GB10 | demag tensor, original | demag tensor, numba |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 100x25x1 | 1.14 ms | 0.48 ms (2x) | 0.166 ms (7x) | 0.092 ms (12x) | 0.039 ms (29x) | 11.5 s | 2 ms |
+| 256x256x1 | 37.21 ms | 1.33 ms (28x) | 1.525 ms (24x) | 0.732 ms (51x) | 0.123 ms (303x) | not run | 24 ms |
+| 64x64x16 | 87.48 ms | 2.33 ms (38x) | 2.774 ms (32x) | 1.511 ms (58x) | 0.35 ms (250x) | not run | 25 ms |
+
+Times per step on the M5 Pro unless marked GB10; speed-ups are relative to the original NumPy on the M5 Pro. Demag tensor times on the M5 Pro; the vectorised NumPy version that replaced numba takes 6 ms for 100x25x1 and 0.1 s for 64x64x16.
 
 ![benchmark](https://raw.githubusercontent.com/LemurPwned/micromagpy/master/benchmarks/figures/benchmark.png)
 
 ### JAX backend (GPU, batched sweeps)
 
 [`micromagpy/jax_backend.py`](https://github.com/LemurPwned/micromagpy/blob/master/micromagpy/jax_backend.py)
-(`pip install "micromagpy[jax]"`, or `jax[cuda13]` for an NVIDIA GPU) runs the
-same discretisation as the numba path, as one compiled loop, and batches
+(`pip install "micromagpy[cuda]"` for an NVIDIA GPU) runs the same
+discretisation as the NumPy path, as one compiled loop, and batches
 independent runs with `jax.vmap`:
 
 - **Fields:** Newell demag, Neumann exchange, uniaxial anisotropy and interfacial DMI.
 - **Torques:** SOT (`sot`) and STT (`stt`).
-- **Noise:** the thermal field.
+- **Noise:** the thermal field (`sigma`) and coloured 1/f field noise
+  (`coloured_noise(ColouredNoiseField(...))`, OU generator), drawn from the
+  run's PRNG key inside the compiled loop.
 - **Solvers:** `run` integrates with Heun, RK4 or adaptive Dormand-Prince (`solver="rk45"`). `relax` is the energy minimiser.
 
 `relax` and `run` can be jitted, vmapped and put inside a `lax.scan`, so a whole
@@ -448,8 +469,8 @@ m_avg = sweep(H_values, jax.random.split(jax.random.PRNGKey(0), len(H_values)))
 
 From [`benchmarks/benchmark_jax.py`](https://github.com/LemurPwned/micromagpy/blob/master/benchmarks/benchmark_jax.py)
 (time per Heun step of one simulation, and 64 thermal runs of a 16x16x1 mesh,
-2000 steps each, e.g. a field sweep). Machines: Apple M5 Pro (18 cores),
-NVIDIA DGX Spark (GB10 GPU, 20-core Grace CPU):
+2000 steps each, e.g. a field sweep; measured against the former numba path).
+Machines: Apple M5 Pro (18 cores), NVIDIA DGX Spark (GB10 GPU, 20-core Grace CPU):
 
 | mesh | numba, M5 Pro | numba, Grace | JAX f64, GB10 | JAX f32, GB10 |
 | --- | --- | --- | --- | --- |
@@ -460,18 +481,11 @@ NVIDIA DGX Spark (GB10 GPU, 20-core Grace CPU):
 | 1024x1024x1 | 95.6 ms | 96.3 ms | 35.6 ms | 12.2 ms |
 | 64 x 16x16x1 thermal runs | 221 s (11.5 s in a 1-thread process pool) | 35.5 s | 0.69 s | 0.20 s |
 
-On a CPU the JAX backend ranges from 1.3x slower (1024x1024, float64) to 3x
+On a CPU the JAX backend ranged from 1.3x slower (1024x1024, float64) to 3x
 faster (small meshes, no per-step Python overhead) than numba for one
-simulation, and is 6-40x faster for batches of small meshes.
+simulation, and 6-40x faster for batches of small meshes.
 On the GPU, float32 is 3-6x faster than float64 (the GB10 has little FP64
 throughput).
-
-**Small meshes on numba.** Below ~64x64 cells the parallel numba kernels
-spend most of their time synchronising threads (16x16x1: 0.30 ms/step with
-`NUMBA_NUM_THREADS=1`, 1.6 ms/step with 18 threads). For sweeps of small
-meshes, run single-threaded simulations side by side
-(`NUMBA_NUM_THREADS=1 MICROMAGPY_FFT_WORKERS=1` and a process pool), or use
-`jax.vmap`.
 
 ![benchmark_jax](https://raw.githubusercontent.com/LemurPwned/micromagpy/master/benchmarks/figures/benchmark_jax.png)
 

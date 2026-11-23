@@ -16,7 +16,7 @@
     "trajectories": 168
   },
   "sot_phase_diagram": {
-    "seconds": 42.21,
+    "seconds": 7.49,
     "simulations": 20000,
     "solver": "cmtj Heun, process pool",
     "steps": 20000
@@ -35,7 +35,7 @@
   },
   "sto": {
     "currents": 25,
-    "seconds": 0.66,
+    "seconds": 0.37,
     "solver": "cmtj RK4"
   },
   "switching_hysteresis": {

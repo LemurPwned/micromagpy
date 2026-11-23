@@ -15,7 +15,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from numba import njit, prange  # noqa: F401
 
 from .config import DTYPE
 from .llg import _as_field, _ll_rhs, normalize
@@ -36,35 +35,14 @@ _B4 = (5179 / 57600, 0.0, 7571 / 16695, 393 / 640, -92097 / 339200, 187 / 2100, 
 _E = tuple(b5 - b4 for b5, b4 in zip(_B5, _B4))
 
 
-@njit(parallel=True, cache=True)
 def _damping_rhs(m, h, gamma, out):
     """Precession-free flow ``-gamma m x (m x h)`` (steepest descent on the sphere)."""
-    nx, ny, nz, _ = m.shape
-    for i in prange(nx):
-        for j in range(ny):
-            for k in range(nz):
-                mx, my, mz = m[i, j, k, 0], m[i, j, k, 1], m[i, j, k, 2]
-                hx, hy, hz = h[i, j, k, 0], h[i, j, k, 1], h[i, j, k, 2]
-                cx = my * hz - mz * hy
-                cy = mz * hx - mx * hz
-                cz = mx * hy - my * hx
-                out[i, j, k, 0] = -gamma * (my * cz - mz * cy)
-                out[i, j, k, 1] = -gamma * (mz * cx - mx * cz)
-                out[i, j, k, 2] = -gamma * (mx * cy - my * cx)
+    out[...] = -gamma * np.cross(m, np.cross(m, h))
 
 
-@njit(cache=True)
 def _max_cell_norm(x):
     """max over cells of |x| (Euclidean norm of the 3-vector)."""
-    nx, ny, nz, _ = x.shape
-    best = 0.0
-    for i in range(nx):
-        for j in range(ny):
-            for k in range(nz):
-                v = x[i, j, k, 0] ** 2 + x[i, j, k, 1] ** 2 + x[i, j, k, 2] ** 2
-                if v > best:
-                    best = v
-    return np.sqrt(best)
+    return float(np.sqrt(np.max(np.sum(x * x, -1))))
 
 
 def llg_rhs_factory(alpha: float, gamma: float, field_fn, extra_rhs=None):

@@ -18,8 +18,8 @@
       16,
       1
     ],
-    "seconds": 242.04,
-    "simulations": 5000,
+    "seconds": 1048.73,
+    "simulations": 20000,
     "steps": 20000
   },
   "sot_switching": {

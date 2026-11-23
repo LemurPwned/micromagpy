@@ -38,8 +38,8 @@ HDL_PER_J = HBAR * theta_sh / (2 * ELECTRON_CHARGE * MU0 * ms * dx[2])
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--fields", type=int, default=25)
-    parser.add_argument("--currents", type=int, default=25)
+    parser.add_argument("--fields", type=int, default=50)
+    parser.add_argument("--currents", type=int, default=50)
     parser.add_argument("--replicas", type=int, default=8)
     parser.add_argument("--hx-max", type=float, default=60e3)
     parser.add_argument("--hdl-max", type=float, default=1.5e5, help="max damping-like field (A/m); H_k,eff ~ 190 kA/m")

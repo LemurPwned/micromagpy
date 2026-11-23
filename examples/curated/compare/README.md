@@ -1,6 +1,6 @@
 # Macrospin (cmtj) vs micromagnetics (micromagpy)
 
-Each script here runs [cmtj](https://github.com/LemurPwned/cmtj) on the device of one micromagnetic example and puts the two results side by side. The macrospin is built with `_common.macrospin`: same Ms, Ku, damping and volume, with the element's demag factors (N_xx, N_yy, N_zz) from micromagpy's demag tensor rather than a thin-film tensor. Both models then share the same anisotropy and shape, and every difference comes from exchange-coupled, non-uniform magnetisation. The drive protocol is the micromagnetic example's. FMR and the SOT loops use cmtj's sampling in both models (100 fields; 2·j_max/130 current steps). The thermal and batched maps use a denser grid for the macrospin.
+Each script here runs [cmtj](https://github.com/LemurPwned/cmtj) on the device of one micromagnetic example and puts the two results side by side. The macrospin is built with `_common.macrospin`: same Ms, Ku, damping and volume, with the element's demag factors (N_xx, N_yy, N_zz) from micromagpy's demag tensor rather than a thin-film tensor. Both models then share the same anisotropy and shape, and every difference comes from exchange-coupled, non-uniform magnetisation. The drive protocol is the micromagnetic example's. FMR, STO, the SOT loops and the SOT phase diagram use cmtj's sampling in both models (100 fields; 25 currents; 2·j_max/130 current steps; 50×50 × 8 replicas). The p-bit and spin-diode scans use a denser grid for the macrospin.
 
 For one cell (no exchange, no demag) the two codes agree to 5 decimals with field, anisotropy, SOT and STT, so the comparisons below test the physics, not conventions.
 
@@ -38,11 +38,11 @@ Both show the same uniform-mode line, and both sit above the thin-film Kittel la
 
 ## Spin-transfer oscillator ([`sto.py`](sto.py))
 
-**Timing:** cmtj 0.7 s (25 currents) · micromagpy JAX 17 s (Mac CPU) / 6.1 s (GB10), numba 90 s · 8 currents
+**Timing:** cmtj 0.4 s · micromagpy JAX 8.7 s (GB10) · 25 currents each (8 currents: JAX 17 s Mac CPU, numba 90 s)
 
 ![sto](results/sto.png)
 
-The macrospin follows the analytic f = γ₀ a_J P / 4πα over the whole range. The mesh agrees up to j ≈ 2.7 × 10¹⁰ A/m². Above that, the precession becomes non-uniform: |⟨m⟩| falls from 0.995 to 0.93, the frequency stays near 5 GHz between 4.4 and 6.1 × 10¹⁰ A/m², and the macrospin overestimates it by up to 1.7×.
+The macrospin follows the analytic f = γ₀ a_J P / 4πα over the whole range. The mesh agrees up to j ≈ 2.2 × 10¹⁰ A/m². Above that, the precession becomes non-uniform (|⟨m⟩| falls from 0.995 to 0.91) and the frequency locks onto plateaus instead of rising linearly: about 4.0 GHz for 3.0–3.75, 5.0–5.3 GHz for 4.0–6.75 and 7.2 GHz at 7 × 10¹⁰ A/m². The macrospin overestimates it by up to 1.8×.
 
 ## SOT switching loops ([`sot_switching.py`](sot_switching.py))
 
@@ -54,11 +54,11 @@ At T = 0 the switching polarity and thresholds agree within 3 % (one sweep step)
 
 ## SOT phase diagram at 300 K ([`sot_phase_diagram.py`](sot_phase_diagram.py))
 
-**Timing:** cmtj 42 s (20 000 runs, 18 processes) · micromagpy 242 s (JAX float32, GB10 GPU, 5000 runs)
+**Timing:** cmtj 7.5 s (18 processes) · micromagpy 1049 s (JAX float32, GB10 GPU) · 20 000 runs × 2 ns each
 
 ![sot-phase-diagram](results/sot-phase-diagram.png)
 
-Here the models differ most. At |H_x| = 60 kA/m the macrospin needs ≳ 0.6 × 10¹² A/m², while the mesh switches from ≈ 0.3–0.5 × 10¹² A/m². At T = 0 the thresholds agree (previous figure), so the gap comes from thermal fluctuations, which help a non-uniform reversal far more than a rigid moment. The macrospin's switched lobes show ringing (the outcome depends on the precession phase at the end of the pulse), which the mesh smears out. Near the overdrive edge the mesh gives random outcomes over a wider band.
+Here the models differ most. At |H_x| = 60 kA/m the macrospin needs ≳ 0.6 × 10¹² A/m², while the mesh switches from ≈ 0.35–0.5 × 10¹² A/m². At T = 0 the thresholds agree (previous figure), so the gap comes from thermal fluctuations, which help a non-uniform reversal far more than a rigid moment. The macrospin's switched lobes show ringing (the outcome depends on the precession phase at the end of the pulse), which the mesh smears out. Near the overdrive edge the mesh gives random outcomes over a wider band.
 
 ## p-bit ([`p_bit.py`](p_bit.py))
 
@@ -85,8 +85,8 @@ All on a Mac M5 Pro unless marked GB10. cmtj uses one process, or a pool of 18 f
 | switching_hysteresis | 480 fields × 10 ns | 10.9 s | 4.0 s (JAX; numba 22 s) |
 | magnetoresistance | 400 fields × 10 ns | 9.3 s | 42 s (JAX GB10; numba 89 s) |
 | fmr_basic | 100 fields × 9 ns | 1.8 s | 156 s (JAX; numba 803 s) |
-| sto | 25 currents × 6 ns | 0.7 s | 6.1 s (JAX GB10, 8 currents; numba 90 s) |
+| sto | 25 currents × 6 ns | 0.4 s | 8.7 s (JAX GB10; numba 90 s for 8 currents) |
 | sot_switching | 3 × 261 pulses | 13 s | 251 s (JAX GB10; numba 3093 s) |
-| sot_phase_diagram | 20 000 runs × 2 ns, 300 K | 42 s | 242 s (JAX GPU, 5000 runs) |
+| sot_phase_diagram | 20 000 runs × 2 ns, 300 K | 7.5 s | 1049 s (JAX GPU) |
 | p_bit | 168 runs × 100 ns, 300 K | 7.3 s | 107 s (JAX GPU) |
 | spin_diode | 1000 runs × 20 ns | 9.2 s | 1409 s (JAX GPU, 600 runs) |

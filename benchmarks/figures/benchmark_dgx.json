@@ -1,0 +1,37 @@
+{
+  "machine": "dgx",
+  "cpu_count": 20,
+  "jax_device": "NVIDIA GB10",
+  "results": [
+    {
+      "mesh": "100x25x1",
+      "step_old_ms": 1.31,
+      "step_new_ms": 0.24,
+      "step_speedup": 5.5,
+      "step_jax_f64_ms": 0.092,
+      "step_jax_f32_ms": 0.039,
+      "tensor_old_serial_s": 15.14,
+      "tensor_new_s": 0.0018
+    },
+    {
+      "mesh": "256x256x1",
+      "step_old_ms": 55.07,
+      "step_new_ms": 3.56,
+      "step_speedup": 15.5,
+      "step_jax_f64_ms": 0.732,
+      "step_jax_f32_ms": 0.123,
+      "tensor_old_serial_s": null,
+      "tensor_new_s": 0.0487
+    },
+    {
+      "mesh": "64x64x16",
+      "step_old_ms": 125.68,
+      "step_new_ms": 5.92,
+      "step_speedup": 21.2,
+      "step_jax_f64_ms": 1.511,
+      "step_jax_f32_ms": 0.35,
+      "tensor_old_serial_s": null,
+      "tensor_new_s": 0.0515
+    }
+  ]
+}

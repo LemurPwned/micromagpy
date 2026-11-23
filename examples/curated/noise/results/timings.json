@@ -1,5 +1,6 @@
 {
   "domain_noise_gif_ima_T300": {
+    "backend": "jax float64 on cpu",
     "domains": 4,
     "frames": 100,
     "mesh": [
@@ -7,10 +8,11 @@
       8,
       1
     ],
-    "seconds": 15.16,
+    "seconds": 2.62,
     "sigma": 0.5
   },
   "domain_noise_gif_ima_T50": {
+    "backend": "jax float64 on cpu",
     "domains": 4,
     "frames": 100,
     "mesh": [
@@ -18,10 +20,11 @@
       8,
       1
     ],
-    "seconds": 12.06,
+    "seconds": 2.64,
     "sigma": 0.5
   },
   "domain_noise_gif_mixed_T300": {
+    "backend": "jax float64 on cpu",
     "domains": 4,
     "frames": 100,
     "mesh": [
@@ -29,10 +32,11 @@
       8,
       1
     ],
-    "seconds": 14.84,
+    "seconds": 2.65,
     "sigma": 0.5
   },
   "domain_noise_gif_mixed_T50": {
+    "backend": "jax float64 on cpu",
     "domains": 4,
     "frames": 100,
     "mesh": [
@@ -40,10 +44,11 @@
       8,
       1
     ],
-    "seconds": 11.9,
+    "seconds": 2.64,
     "sigma": 0.5
   },
   "domain_noise_gif_pma_T300": {
+    "backend": "jax float64 on cpu",
     "domains": 4,
     "frames": 100,
     "mesh": [
@@ -51,10 +56,11 @@
       8,
       1
     ],
-    "seconds": 15.5,
+    "seconds": 3.03,
     "sigma": 0.5
   },
   "domain_noise_gif_pma_T50": {
+    "backend": "jax float64 on cpu",
     "domains": 4,
     "frames": 100,
     "mesh": [
@@ -62,58 +68,62 @@
       8,
       1
     ],
-    "seconds": 12.23,
+    "seconds": 3.41,
     "sigma": 0.5
   },
   "domain_noise_sweep_ima_T300": {
+    "backend": "jax float64 on cpu",
     "mesh": [
       32,
       8,
       1
     ],
     "runs": 36,
-    "seconds": 609.32,
+    "seconds": 134.58,
     "seeds": 3,
-    "solver": "relax + heun",
+    "solver": "jax relax + heun",
     "temperature_K": 300.0,
     "time_per_run_ns": 6.0
   },
   "domain_noise_sweep_ima_T50": {
+    "backend": "jax float64 on cpu",
     "mesh": [
       32,
       8,
       1
     ],
     "runs": 36,
-    "seconds": 583.12,
+    "seconds": 133.6,
     "seeds": 3,
-    "solver": "relax + heun",
+    "solver": "jax relax + heun",
     "temperature_K": 50.0,
     "time_per_run_ns": 6.0
   },
   "domain_noise_sweep_pma_T300": {
+    "backend": "jax float64 on cpu",
     "mesh": [
       32,
       8,
       1
     ],
     "runs": 36,
-    "seconds": 604.71,
+    "seconds": 181.68,
     "seeds": 3,
-    "solver": "relax + heun",
+    "solver": "jax relax + heun",
     "temperature_K": 300.0,
     "time_per_run_ns": 6.0
   },
   "domain_noise_sweep_pma_T50": {
+    "backend": "jax float64 on cpu",
     "mesh": [
       32,
       8,
       1
     ],
     "runs": 36,
-    "seconds": 596.08,
+    "seconds": 134.14,
     "seeds": 3,
-    "solver": "relax + heun",
+    "solver": "jax relax + heun",
     "temperature_K": 50.0,
     "time_per_run_ns": 6.0
   },
@@ -131,24 +141,26 @@
     "seconds": 2.53
   },
   "noise_spectrogram": {
+    "backend": "jax float64 on cpu",
     "fields": 11,
     "mesh": [
       16,
       16,
       1
     ],
-    "seconds": 857.07,
-    "solver": "heun",
+    "seconds": 258.85,
+    "solver": "jax heun (vmap)",
     "steps_per_field": 320000
   },
   "seeded_noise_demo": {
+    "backend": "jax float64 on cpu",
     "mesh": [
       16,
       16,
       1
     ],
-    "seconds": 3.39,
-    "solver": "heun",
+    "seconds": 1.97,
+    "solver": "jax heun",
     "steps": 15000
   }
 }

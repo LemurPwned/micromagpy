@@ -2,43 +2,46 @@
 
 A small PMA dot with thermal noise (100 K) and per-grain 1/f field noise is run
 twice with the same seed and once with a different seed. Same-seed runs are
-bit-identical; a different seed gives a different trajectory.
+bit-identical; a different seed gives a different trajectory. JAX backend:
+the thermal and OU 1/f noise are drawn from the run's PRNG key inside the
+compiled loop.
 """
 
-import matplotlib.pyplot as plt
-import numpy as np
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from _common import fig_path, timed
+import jax
+import matplotlib.pyplot as plt
+import numpy as np
 
-from micromagpy.demag import compute_demag_tensor
-from micromagpy.noise import ColouredNoiseField, ThermalField, voronoi_grains
-from micromagpy.simulation import simulate
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from _common import fig_path, timed  # noqa: E402
+
+from micromagpy import jax_backend as mj  # noqa: E402
+from micromagpy.noise import ColouredNoiseField, voronoi_grains  # noqa: E402
 
 n = (16, 16, 1)
 dx = (3e-9, 3e-9, 1e-9)
 ms, A, K, damping, dt = 8e5, 1.3e-11, 6e5, 0.02, 1e-13
 steps = 5000  # 0.5 ns
-F_DEMAG = compute_demag_tensor(n, dx)
+FIELD = mj.make_field(n, dx, ms, A, K=K)
+SIGMA = mj.thermal_sigma(dx, ms, damping, 100.0, dt)
 
 
 def run(seed: int):
-    rng = np.random.default_rng(seed)
+    rng = np.random.default_rng(seed)  # grains and the initial OU state
     m = np.zeros(n + (3,))
     m[..., 0] = 1.0  # start in-plane, like the cmtj demo
-    noise = [
-        ThermalField(n, dx, ms, damping, 100.0, dt, seed=rng),
-        ColouredNoiseField(n, 5e3, 1.0, dt, regions=voronoi_grains(n, 8, seed=rng), seed=rng),
-    ]
-    res = simulate(m, dx, ms, A, damping, dt, steps, K=K, demag=F_DEMAG, noise=noise)
+    onef = mj.coloured_noise(ColouredNoiseField(n, 5e3, 1.0, dt, regions=voronoi_grains(n, 8, seed=rng), seed=rng))
+    res = mj.run(m, FIELD, damping, dt, steps, sigma=SIGMA, noise=[onef], key=jax.random.PRNGKey(seed))
+    res = {k: np.asarray(v) for k, v in res.items()}
     print(f"seed {seed}: final <m> = {np.round(res['m_avg'][-1], 4)}")
     return res
 
 
 def main():
-    with timed("seeded_noise_demo", mesh=list(n), steps=3 * steps, solver="heun"):
+    with timed("seeded_noise_demo", mesh=list(n), steps=3 * steps, solver="jax heun",
+               backend=f"jax float64 on {jax.devices()[0].device_kind}"):
         a, b, c = run(1224), run(1224), run(9876)
     assert np.array_equal(a["m_avg"], b["m_avg"]), "same seed must reproduce exactly"
     t = a["t"] * 1e9

@@ -1,5 +1,8 @@
 """numba vs JAX: time per Heun step, and a batch of small thermal simulations.
 
+The committed numba results predate the removal of numba; ``bench_numba`` now
+times the NumPy reference path (``simulate``).
+
 ``python benchmarks/benchmark_jax.py LABEL`` times numba and JAX (float64 and
 float32) on whatever device JAX picks (``JAX_PLATFORMS=cpu`` forces the CPU)
 and writes ``benchmarks/figures/jax_LABEL.json``. ``--plot`` combines all

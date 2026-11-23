@@ -1,15 +1,14 @@
-"""Optional JAX backend: the whole time loop is one compiled XLA program.
+"""JAX backend: the whole time loop is one compiled XLA program.
 
-The numba path calls a handful of kernels from Python on every step, which is
-fast on a CPU but leaves a GPU idle and pays the Python overhead per step.
-Here the effective field, the LLG right-hand side and the solver step are
+The NumPy reference path (:func:`micromagpy.simulation.simulate`) calls its
+kernels from Python on every step. Here the effective field, the LLG right-hand side and the solver step are
 traced once and run inside :func:`jax.lax.scan`, on CPU or GPU, and
 independent simulations (field / current sweeps, thermal ensembles) can be
-batched with :func:`jax.vmap`. Install with ``pip install "micromagpy[jax]"``
-(CPU) or ``pip install "jax[cuda13]"`` (NVIDIA GPU).
+batched with :func:`jax.vmap`. For an NVIDIA GPU install
+``pip install "micromagpy[cuda]"``.
 
 ``dtype=jnp.float32`` is much faster on GPUs with little FP64 throughput
-(consumer / GB10 class parts); keep the default float64 to match the numba
+(consumer / GB10 class parts); keep the default float64 to match the NumPy
 path to round-off.
 The module sets ``XLA_PYTHON_CLIENT_PREALLOCATE=false`` unless already set:
 JAX otherwise grabs 75 % of device memory up front, which on GPUs that share
@@ -149,6 +148,40 @@ def thermal_sigma(dx, ms, alpha, temperature, dt) -> float:
     return float(np.sqrt(2 * alpha * BOLTZMANN * temperature / (GAMMA * MU0 * ms * np.prod(dx) * dt)))
 
 
+def coloured_noise(src) -> tuple:
+    """JAX version of a :class:`micromagpy.noise.ColouredNoiseField` (``"ou"`` generator).
+
+    Takes the poles, amplitudes, regions, axis, spatial filter and mask of
+    ``src`` and returns ``(state0, step)`` for ``run(noise=[...])``, where
+    ``step(state, key) -> (state, h)`` advances the OU poles by ``src.dt``
+    (exact update, as :meth:`OUAlphaNoise.tick`) and returns the field (A/m).
+    The field is held over each step, as in :func:`micromagpy.simulation.simulate`.
+    """
+    from .noise import OUAlphaNoise
+
+    g = src.generator
+    if not isinstance(g, OUAlphaNoise):
+        raise ValueError("coloured_noise supports the 'ou' generator only")
+    g.set_dt(src.dt)
+    a, b, amp = jnp.asarray(g._a), jnp.asarray(g._b), jnp.asarray(src._amp)
+    labels = None if src.labels is None else jnp.asarray(src.labels)
+    axis = None if src.axis is None else jnp.asarray(src.axis)
+    mask = None if src.mask is None else jnp.asarray(src.mask)
+    kernel, axes = (None, ()) if src._filter is None else (jnp.asarray(src._filter[0]), src._filter[1])
+
+    def step(state, key):
+        state = a * state + b * jax.random.normal(key, state.shape, state.dtype)
+        x = state.sum(0) * amp
+        if labels is not None:
+            x = x[labels]
+        elif axes:
+            x = jnp.real(jnp.fft.ifftn(jnp.fft.fftn(x, axes=axes) * kernel, axes=axes))
+        h = x * axis if axis is not None else x
+        return state, h if mask is None else h * mask
+
+    return jnp.asarray(g.state), step
+
+
 def _normalize(m):
     norm = jnp.linalg.norm(m, axis=-1, keepdims=True)
     return jnp.where(norm > 0, m / jnp.where(norm > 0, norm, 1), m)
@@ -170,7 +203,7 @@ def _dp45(rhs, m, t, h, k1):
 
 
 def _dp45_attempt(rhs, m, t, dt, k1, tol, dt_max):
-    """Try one step of size ``min(dt, dt_max)``; returns ``(accepted, m, t, k1, dt)`` (numba rules)."""
+    """Try one step of size ``min(dt, dt_max)``; returns ``(accepted, m, t, k1, dt)`` (as :func:`micromagpy.solvers.rk45_step`)."""
     h = jnp.minimum(dt, dt_max)
     y5, k7, err = _dp45(rhs, m, t, h, k1)
     factor = jnp.clip(jnp.where(err > 0, 0.9 * (tol / jnp.where(err > 0, err, 1.0)) ** 0.2, 5.0), 0.2, 5.0)
@@ -211,6 +244,7 @@ def run(
     gamma: float = GAMMA,
     observe: Callable | None = None,
     tol: float = 1e-6,
+    noise: tuple = (),
 ):
     """Integrate LLG for ``steps`` steps in one compiled loop.
 
@@ -218,6 +252,8 @@ def run(
     :param h_ext: traceable ``h_ext(t)`` (A/m), broadcastable to ``m``.
     :param extra: torque term ``extra(m, t, alpha, pref)`` (e.g. :func:`sot`).
     :param sigma: thermal field std (A/m, see :func:`thermal_sigma`); Heun only.
+    :param noise: field noise sources ``(state0, step)``, e.g. from
+        :func:`coloured_noise`; advanced once per step, field held over the step.
     :param solver: ``"heun"`` (stochastic Heun, Stratonovich), ``"rk4"`` or
         ``"rk45"`` (adaptive Dormand-Prince with error ``tol`` per cell; ``dt``
         is then only the output interval, as in :func:`micromagpy.simulation.simulate`).
@@ -238,6 +274,15 @@ def run(
     pref = gamma / (1 + alpha**2)
     key = jax.random.PRNGKey(0) if key is None else key
 
+    def noise_field(key, ns):
+        """Advance the noise sources one step: returns (key, states, summed field)."""
+        h, out = 0.0, []
+        for (_, nstep), st in zip(noise, ns):
+            key, sub = jax.random.split(key)
+            st, hn = nstep(st, sub)
+            h, out = h + hn, out + [st]
+        return key, tuple(out), h
+
     def rhs(m, t, h_fixed):
         h = field(m) + h_fixed
         if h_ext is not None:
@@ -249,25 +294,28 @@ def run(
         return dm.astype(m.dtype)  # keep float32 runs in float32
 
     def step(carry, i):
-        m, key, hdt, nacc = carry
+        m, key, hdt, nacc, ns = carry
         t = (i * dt).astype(m0.dtype)
-        if solver == "rk45":
-            m, hdt, n = _integrate_rk45(lambda mm, tt: rhs(mm, tt, 0.0), m, t, t + dt, hdt, tol)
-            return (m, key, hdt, nacc + n), None
-        if solver == "rk4":
-            k1 = rhs(m, t, 0.0)
-            k2 = rhs(m + 0.5 * dt * k1, t + 0.5 * dt, 0.0)
-            k3 = rhs(m + 0.5 * dt * k2, t + 0.5 * dt, 0.0)
-            k4 = rhs(m + dt * k3, t + dt, 0.0)
-            return (_normalize(m + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)), key, hdt, nacc), None
         hth = 0.0
         if sigma:
             key, sub = jax.random.split(key)
             hth = sigma * jax.random.normal(sub, m.shape, m.dtype) * mag
+        if noise:
+            key, ns, hn = noise_field(key, ns)
+            hth = hth + hn.astype(m.dtype)
+        if solver == "rk45":
+            m, hdt, n = _integrate_rk45(lambda mm, tt: rhs(mm, tt, hth), m, t, t + dt, hdt, tol)
+            return (m, key, hdt, nacc + n, ns), None
+        if solver == "rk4":
+            k1 = rhs(m, t, hth)
+            k2 = rhs(m + 0.5 * dt * k1, t + 0.5 * dt, hth)
+            k3 = rhs(m + 0.5 * dt * k2, t + 0.5 * dt, hth)
+            k4 = rhs(m + dt * k3, t + dt, hth)
+            return (_normalize(m + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)), key, hdt, nacc, ns), None
         k1 = rhs(m, t, hth)
         mp = _normalize(m + dt * k1)
         k2 = rhs(mp, t, hth)  # h_ext and torques held at t, as in simulate(solver="heun")
-        return (_normalize(m + 0.5 * dt * (k1 + k2)), key, hdt, nacc), None
+        return (_normalize(m + 0.5 * dt * (k1 + k2)), key, hdt, nacc, ns), None
 
     def block(carry, j):
         m = carry[0]
@@ -276,8 +324,8 @@ def run(
         return carry, avg
 
     n_rec = steps // record_every
-    carry = (m0, key, jnp.asarray(dt, m0.dtype), jnp.asarray(0))
-    (m, _, _, nacc), m_avg = jax.lax.scan(block, carry, jnp.arange(n_rec))
+    carry = (m0, key, jnp.asarray(dt, m0.dtype), jnp.asarray(0), tuple(jnp.asarray(st, m0.dtype) for st, _ in noise))
+    (m, _, _, nacc, _), m_avg = jax.lax.scan(block, carry, jnp.arange(n_rec))
     out = {"t": jnp.arange(n_rec) * record_every * dt, "m_avg": m_avg, "m": m}
     if solver == "rk45":
         out["rk45_steps"] = nacc

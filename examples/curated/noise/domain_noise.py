@@ -21,19 +21,19 @@ Usage::
 """
 
 import argparse
-
-import matplotlib.pyplot as plt
-import numpy as np
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from _common import fig_path, timed
+import jax
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
 
-from micromagpy.demag import compute_demag_tensor
-from micromagpy.energy import relax
-from micromagpy.noise import ThermalField, power_spectral_density
-from micromagpy.simulation import simulate
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from _common import fig_path, timed  # noqa: E402
+
+from micromagpy import jax_backend as mj  # noqa: E402
+from micromagpy.noise import power_spectral_density  # noqa: E402
 
 n = (32, 8, 1)
 dx = (5e-9, 5e-9, 2e-9)
@@ -41,7 +41,6 @@ ms, A, damping = 8e5, 1.3e-11, 0.05
 dt = 1e-13  # Heun; omega*dt of the fastest exchange mode ~ 0.2
 TEMPERATURE = 300.0  # overridden by --temperature
 K0 = {"pma": 8e5, "ima": 5e4}  # PMA: K_eff = K - mu0 Ms^2 / 2 ~ 4e5 J/m^3
-F_DEMAG = compute_demag_tensor(n, dx)
 
 
 def bar_labels(n_domains: int) -> np.ndarray:
@@ -76,25 +75,35 @@ def initial_state(axis_cells):
     return m * sign[..., None]
 
 
-def run(mode, n_domains, sigma, time, seed=0, record_every=1, callback=None):
+def run(mode, n_domains, sigma, time, seed=0, frame_every=None):
+    """Relax, then evolve with the thermal field (JAX, Heun); ``m_avg`` is recorded every step.
+
+    With ``frame_every`` the run goes in jitted chunks of that many steps and also
+    returns the per-bar averages every step (``bar_m``) and the m maps at the
+    chunk starts (``frames``, as ``(t, step, m[:, :, 0])``).
+    """
     K, axes, labels, *_ = domain_anisotropy(mode, n_domains, sigma, seed)
-    m = relax(initial_state(axes), dx, ms, A=A, K=K, kaxis=axes, demag=F_DEMAG)["m"]
-    thermal = ThermalField(n, dx, ms, damping, TEMPERATURE, dt, seed=seed + 1000)
-    return simulate(
-        m,
-        dx,
-        ms,
-        A,
-        damping,
-        dt,
-        int(time / dt),
-        K=K,
-        kaxis=axes,
-        demag=F_DEMAG,
-        noise=[thermal],
-        record_every=record_every,
-        callback=callback,
-    )
+    field = mj.make_field(n, dx, ms, A, K=K, kaxis=axes)
+    m = mj.relax(initial_state(axes), field, ms)["m"]
+    sig = mj.thermal_sigma(dx, ms, damping, TEMPERATURE, dt)
+    key, steps = jax.random.PRNGKey(seed + 1000), int(time / dt)
+    if frame_every is None:
+        return {"m_avg": np.asarray(mj.run(m, field, damping, dt, steps, sigma=sig, key=key)["m_avg"])}
+    onehot = jnp.asarray(labels[..., None] == np.arange(n_domains), float)
+    counts = onehot.sum((0, 1, 2))[:, None]
+
+    def observe(mm):
+        return mm.mean((0, 1, 2)), jnp.einsum("xyzb,xyzc->bc", onehot, mm) / counts
+
+    chunk = jax.jit(lambda mm, k: mj.run(mm, field, damping, dt, frame_every, sigma=sig, key=k, observe=observe))
+    frames, m_avg, bar_m = [], [], []
+    for k in range(steps // frame_every):
+        frames.append((k * frame_every * dt, k * frame_every, np.asarray(m[:, :, 0, :])))
+        out = chunk(m, jax.random.fold_in(key, k))
+        m = out["m"]
+        m_avg.append(np.asarray(out["m_avg"][0]))
+        bar_m.append(np.asarray(out["m_avg"][1]))
+    return {"m_avg": np.concatenate(m_avg), "bar_m": np.concatenate(bar_m), "frames": frames}
 
 
 def spectrum(m_avg, discard=0.1):
@@ -135,7 +144,8 @@ def sweep(args):
             runs=len(Ns) * len(sigmas) * args.seeds,
             seeds=args.seeds,
             time_per_run_ns=args.time * 1e9,
-            solver="relax + heun",
+            solver="jax relax + heun",
+            backend=f"jax float64 on {jax.devices()[0].device_kind}",
             temperature_K=TEMPERATURE,
         ):
             for a, N in enumerate(Ns):
@@ -221,21 +231,13 @@ def gif(args):
     for mode in args.modes.split(","):
         N, s = args.gif_domains, args.gif_sigma
         K, axes_c, labels, K_bar, axis_bar, kinds = domain_anisotropy(mode, N, s, args.seed)
-        lab2d = labels[:, :, 0]
         every = int(args.frame_dt / dt)
-        frames, bar_m = [], []
-
-        def grab(i, t, m):
-            # per-bar <m> every step (for the spectra), full maps every frame
-            bar_m.append([m[:, :, 0][lab2d == b].mean(axis=0) for b in range(N)])
-            if i % every == 0:
-                frames.append((t, i, m[:, :, 0, :].copy()))
-
-        info = dict(mesh=list(n), domains=N, sigma=s, frames=int(args.gif_time / args.frame_dt))
+        info = dict(mesh=list(n), domains=N, sigma=s, frames=int(args.gif_time / args.frame_dt),
+                    backend=f"jax float64 on {jax.devices()[0].device_kind}")
         with timed(f"domain_noise_gif_{mode}_T{TEMPERATURE:g}", **info):
-            res = run(mode, N, s, args.gif_time, seed=args.seed, record_every=1, callback=grab)
+            res = run(mode, N, s, args.gif_time, seed=args.seed, frame_every=every)
         m_avg = res["m_avg"]  # (steps, 3) element average, every step
-        bar_m = np.array(bar_m)  # (steps, N, 3)
+        bar_m, frames = res["bar_m"], res["frames"]  # (steps, N, 3); maps every frame
         times = np.array([fr[0] for fr in frames]) * 1e9
         nper = int(args.spectrum_window / dt)
         f_fin, S_fin = welch_fixed(m_avg, nper)

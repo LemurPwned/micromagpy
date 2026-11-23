@@ -10,14 +10,12 @@ and every cell is resolved (demag, exchange, thermal field per cell).
 
 All fields x replicas run as one batch with the JAX backend
 (:mod:`micromagpy.jax_backend`, ``jax.vmap``), which is where a GPU pays off:
-each trajectory is tiny, but there are hundreds of them. ``--numba-estimate``
-times a short numba run of one trajectory for comparison.
+each trajectory is tiny, but there are hundreds of them.
 """
 
 import argparse
 import os
 import sys
-import time
 
 import jax
 import jax.numpy as jnp
@@ -44,7 +42,6 @@ def main():
     parser.add_argument("--time", type=float, default=100e-9)
     parser.add_argument("--fields", type=int, default=21)
     parser.add_argument("--replicas", type=int, default=8)
-    parser.add_argument("--numba-estimate", action="store_true")
     args = parser.parse_args()
 
     disk = np.ones(n, bool)
@@ -71,16 +68,8 @@ def main():
     batch = jax.jit(jax.vmap(jax.vmap(one, (None, 0)), (0, None)))
     keys = jax.random.split(jax.random.PRNGKey(1), args.replicas)
     with timed("p_bit", mesh=list(n), trajectories=args.fields * args.replicas, steps=steps,
-               backend=f"jax vmap on {jax.devices()[0].device_kind}") as info:
+               backend=f"jax vmap on {jax.devices()[0].device_kind}"):
         mz = np.asarray(batch(jnp.asarray(fields), keys))  # (fields, replicas, time)
-        if args.numba_estimate:
-            from micromagpy.noise import ThermalField
-            from micromagpy.simulation import simulate
-
-            th = ThermalField(n, dx, ms, damping, T, dt, mask=disk)
-            t0, probe = time.time(), 2000
-            simulate(m0, dx, ms, A, damping, dt, probe, K=Ku, demag=f_demag, noise=[th], record_every=record_every)
-            info["numba_estimate_s"] = round((time.time() - t0) / probe * steps * args.fields * args.replicas, 1)
 
     m_s = np.abs(mz[args.fields // 2]).mean()
     t = np.arange(mz.shape[-1]) * record_every * dt

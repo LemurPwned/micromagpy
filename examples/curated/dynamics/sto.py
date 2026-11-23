@@ -39,7 +39,7 @@ def run(j, field, steps):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--currents", type=int, default=8)
+    parser.add_argument("--currents", type=int, default=25)
     parser.add_argument("--time", type=float, default=6e-9)
     args = parser.parse_args()
     field = mj.make_field(n, dx, ms, A)

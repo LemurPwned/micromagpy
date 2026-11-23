@@ -110,3 +110,32 @@ def test_relax_matches_numba():
     assert bool(got["converged"]) and ref["converged"]
     assert int(got["steps"]) == ref["steps"]
     np.testing.assert_allclose(np.asarray(got["m"]), ref["m"], atol=1e-9)
+
+
+def test_run_noise_source_is_a_held_field():
+    n, dt = (6, 5, 1), 1e-13
+    m0 = _m(n, 5)
+    H = np.random.default_rng(1).normal(size=n + (3,)) * 3e4
+    field = mj.make_field(n, DX, MS, A, K)
+    const = (jax.numpy.zeros(()), lambda st, key: (st, jax.numpy.asarray(H)))
+    for solver in ("heun", "rk4"):
+        a = mj.run(m0, field, 0.02, dt, 50, h_ext=lambda t: H, solver=solver)
+        b = mj.run(m0, field, 0.02, dt, 50, noise=[const], solver=solver)
+        np.testing.assert_allclose(np.asarray(b["m"]), np.asarray(a["m"]), atol=1e-14)
+
+
+def test_coloured_noise_matches_numpy_source():
+    from micromagpy.noise import ColouredNoiseField, voronoi_grains
+
+    n, dt, amp = (12, 10, 1), 1e-12, 2e3
+    labels = voronoi_grains(n, 5, seed=0)
+    labels[0, 0] = 0  # one cell without noise
+    src = ColouredNoiseField(n, amp, 1.0, dt, regions=labels, generator_kwargs=dict(f_min=1e-2 / dt), seed=3)
+    state, step = mj.coloured_noise(src)
+    keys = jax.random.split(jax.random.PRNGKey(0), 20000)
+    h = np.asarray(jax.jit(lambda s: jax.lax.scan(step, s, keys)[1])(state))
+    assert np.all(h[:, 0, 0] == 0)
+    for r in range(1, 6):  # one vector per grain, rms = amplitude per component
+        cells = h[:, labels == r]
+        np.testing.assert_array_equal(cells, np.broadcast_to(cells[:, :1], cells.shape))
+        np.testing.assert_allclose(cells[:, 0].std(0), amp, rtol=0.1)

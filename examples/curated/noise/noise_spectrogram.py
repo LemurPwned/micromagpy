@@ -5,30 +5,25 @@ field and per-grain 1/f field noise. For each out-of-plane field the Welch PSD
 of <m_x> is computed. The thermal noise excites the FMR line (which follows
 the Kittel relation), while the 1/f sources show up as a low-frequency 1/f
 band whose level falls as the field stiffens the magnetisation
-(susceptibility ~ 1/(H + H_k,eff)^2).
+(susceptibility ~ 1/(H + H_k,eff)^2). JAX backend: every field is relaxed and
+integrated in one vmapped call, each with its own PRNG key.
 """
 
 import argparse
-
-import matplotlib.pyplot as plt
-import numpy as np
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from _common import fig_path, timed
+import jax
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
 
-from micromagpy.config import GAMMA, MU0
-from micromagpy.demag import compute_demag_tensor
-from micromagpy.energy import relax
-from micromagpy.noise import (
-    ColouredNoiseField,
-    ThermalField,
-    fit_spectral_exponent,
-    power_spectral_density,
-    voronoi_grains,
-)
-from micromagpy.simulation import simulate
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from _common import fig_path, timed  # noqa: E402
+
+from micromagpy import jax_backend as mj  # noqa: E402
+from micromagpy.config import GAMMA, MU0  # noqa: E402
+from micromagpy.noise import ColouredNoiseField, fit_spectral_exponent, power_spectral_density, voronoi_grains  # noqa: E402
 
 n = (16, 16, 1)
 dx = (4e-9, 4e-9, 1e-9)
@@ -51,26 +46,32 @@ def main():
 
     Hscan = np.linspace(args.hmin, args.hmax, args.fields)
     steps = int(args.time / dt)
-    f_demag = compute_demag_tensor(n, dx)
+    field = mj.make_field(n, dx, ms, A, K=Ku)
+    sigma = mj.thermal_sigma(dx, ms, damping, args.temperature, dt)
     rng = np.random.default_rng(0)
     grains = voronoi_grains(n, 10, seed=rng)
     band = {"f_min": 1e7, "f_max": 5e11}
+    # one 1/f source per field (independent initial OU states); the step function is shared
+    sources = [ColouredNoiseField(n, args.onef, 1.0, dt, regions=grains, generator_kwargs=band, seed=rng) for _ in Hscan]
+    onef_step = mj.coloured_noise(sources[0])[1]
+    onef_state = jnp.stack([mj.coloured_noise(src)[0] for src in sources])
+    m0 = jnp.zeros(n + (3,)).at[..., 2].set(1.0)
+
+    def one(H, state0, key):
+        h = jnp.array([0.0, 0.0, 1.0]) * H
+        m = mj.relax(m0, field, ms, h_ext=h)["m"]
+        return mj.run(m, field, damping, dt, steps, h_ext=lambda t: h, sigma=sigma, noise=[(state0, onef_step)], key=key)["m_avg"]
+
+    keys = jax.random.split(jax.random.PRNGKey(0), len(Hscan))
+    with timed("noise_spectrogram", mesh=list(n), fields=args.fields, steps_per_field=steps, solver="jax heun (vmap)",
+               backend=f"jax float64 on {jax.devices()[0].device_kind}"):
+        m_avg = np.asarray(jax.block_until_ready(jax.jit(jax.vmap(one))(jnp.asarray(Hscan), onef_state, keys)))
     psds, alphas = [], []
-    m = np.zeros(n + (3,))
-    m[..., 2] = 1.0
-    with timed("noise_spectrogram", mesh=list(n), fields=args.fields, steps_per_field=steps, solver="heun"):
-        for H in Hscan:
-            m = relax(m, dx, ms, A=A, K=Ku, h_ext=(0, 0, H), demag=f_demag)["m"]
-            noise = [
-                ThermalField(n, dx, ms, damping, args.temperature, dt, seed=rng),
-                ColouredNoiseField(n, args.onef, 1.0, dt, regions=grains, generator_kwargs=band, seed=rng),
-            ]
-            res = simulate(m, dx, ms, A, damping, dt, steps, K=Ku, h_ext=(0, 0, H), demag=f_demag, noise=noise)
-            m = res["m"]
-            f, p = power_spectral_density(res["m_avg"][steps // 10 :, 0], dt, segments=2)
-            psds.append(p)
-            alphas.append(fit_spectral_exponent(f, p, f_max=1.5e9))
-            print(f"H = {H / 1e3:6.1f} kA/m   low-f exponent {alphas[-1]:.2f}")
+    for H, a in zip(Hscan, m_avg):
+        f, p = power_spectral_density(a[steps // 10 :, 0], dt, segments=2)
+        psds.append(p)
+        alphas.append(fit_spectral_exponent(f, p, f_max=1.5e9))
+        print(f"H = {H / 1e3:6.1f} kA/m   low-f exponent {alphas[-1]:.2f}")
     psds = np.array(psds)
     np.savez(fig_path("noise-spectrogram.npz"), f=f, psd=psds, H=Hscan, alpha_low_f=alphas)
     sel = f < 40e9
