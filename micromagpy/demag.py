@@ -16,6 +16,10 @@ node (vectorised NumPy) and apply the stencil with NumPy slicing, which is
 equivalent up to floating point summation order but orders of magnitude faster.
 """
 
+import hashlib
+import os
+import tempfile
+
 import numpy as np
 
 from .config import DTYPE
@@ -23,6 +27,7 @@ from .fft import fft_axes, padded_shape, rfftn
 
 pi = np.pi
 _EPS = 1e-18
+_CACHE_VERSION = 1  # bump when the tensor's numerics change
 
 
 def f(x, y, z):
@@ -88,6 +93,10 @@ def compute_demag_tensor_real(n: tuple, dx: tuple, shape: tuple = None) -> np.nd
     ``shape`` defaults to :func:`micromagpy.fft.padded_shape` and must be at
     least ``2n - 1`` along every axis with more than one cell.
     Components are ordered (xx, xy, xz, yy, yz, zz).
+
+    Tensors of 2**18 padded cells or more are cached on disk (keyed by mesh,
+    cell shape and padding) in ``$MICROMAGPY_CACHE``, default
+    ``<tmp>/micromagpy-demag``; set ``MICROMAGPY_CACHE=""`` to disable.
     """
     n = tuple(int(k) for k in n)
     # N is dimensionless, so evaluate f/g in units of the largest cell edge.
@@ -100,6 +109,22 @@ def compute_demag_tensor_real(n: tuple, dx: tuple, shape: tuple = None) -> np.nd
         shape = padded_shape(n)
     if any(s < 2 * k - 1 for s, k in zip(shape, n)):
         raise ValueError(f"Padded shape {shape} too small for mesh {n}")
+    cache = os.environ.get("MICROMAGPY_CACHE", os.path.join(tempfile.gettempdir(), "micromagpy-demag"))
+    if not cache or np.prod(shape) < 2**18:  # small tensors are quicker to compute than to load
+        return _newell(n, dx, shape)
+    key = hashlib.sha1(repr((_CACHE_VERSION, n, dx, tuple(shape))).encode()).hexdigest()[:16]
+    path = os.path.join(cache, f"newell_{key}.npy")
+    if os.path.exists(path):
+        return np.load(path)
+    n_demag = _newell(n, dx, shape)
+    os.makedirs(cache, exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.npy"
+    np.save(tmp, n_demag)
+    os.replace(tmp, path)  # atomic: concurrent runs never see a partial file
+    return n_demag
+
+
+def _newell(n, dx, shape):
     n_demag = np.zeros(tuple(shape) + (6,), dtype=DTYPE)
     ix = np.ix_(*(_wrap_index(nk, s) for nk, s in zip(n, shape)))
     norm = -1.0 / (4.0 * pi * np.prod(dx))
@@ -107,8 +132,9 @@ def compute_demag_tensor_real(n: tuple, dx: tuple, shape: tuple = None) -> np.nd
         nodes = _node_values(use_g, *n, *dx, *perm)
         for axis in range(3):
             nodes = _second_difference(nodes, axis)
-        # nodes now holds offsets [-(n-1), n-1] in natural order
-        n_demag[..., c][ix] = nodes * norm
+        # nodes now holds offsets [-(n-1), n-1] in natural order. Every component is even under
+        # r -> -r; enforcing it removes round-off asymmetry and makes the kernel's FFT real.
+        n_demag[..., c][ix] = 0.5 * (nodes + nodes[::-1, ::-1, ::-1]) * norm
     return n_demag
 
 
