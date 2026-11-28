@@ -514,6 +514,32 @@ throughput).
 
 ![benchmark_jax](https://raw.githubusercontent.com/LemurPwned/micromagpy/master/benchmarks/figures/benchmark_jax.png)
 
+### vs mumax3
+
+[`benchmarks/mumax_compare.py`](https://github.com/LemurPwned/micromagpy/blob/master/benchmarks/mumax_compare.py)
+runs both codes on the same GB10; mumax3 3.12 runs from
+[`benchmarks/mumax3/Dockerfile`](https://github.com/LemurPwned/micromagpy/blob/master/benchmarks/mumax3/Dockerfile)
+(CUDA 13, amd64/arm64). Times are the simulation only: no demag tensor, no
+compile (micromagpy) and no kernel setup (mumax3). Both use Dormand-Prince
+with error 1e-5 per step on SP4 and FMR.
+
+| problem | mumax3 (f32) | micromagpy f64 | micromagpy f32 |
+| --- | --- | --- | --- |
+| SP4, 128x32x1: relax | 1.48 s | 0.67 s | |
+| SP4: 1 ns, field 1 | 1.00 s | 0.69 s | |
+| FMR standard problem, 24x24x2: 20 ns | 19.2 s | 12.0 s | |
+| RK4 step, 128x128x1 | 0.40 ms | 0.67 ms | 0.20 ms |
+| RK4 step, 512x512x1 | 1.9 ms | 11.8 ms | 3.0 ms |
+| RK4 step, 1024x1024x1 | 11.3 ms | 57 ms | 20 ms |
+| RK4 step, 2048x2048x1 | 76 ms | 235 ms | 87 ms |
+
+The SP4 traces agree to 0.006 in <m> and the FMR spectra peak in the same
+0.05 GHz bins. Large meshes are bound by memory traffic of the FFT
+convolution, where mumax3's in-place cuFFT and fused kernel multiply make
+fewer passes than XLA's out-of-place FFTs and transposes.
+
+![mumax3 comparison](https://raw.githubusercontent.com/LemurPwned/micromagpy/master/benchmarks/figures/mumax_NVIDIA_GB10.png)
+
 ## Curated examples
 
 [`examples/curated/`](https://github.com/LemurPwned/micromagpy/tree/master/examples/curated)

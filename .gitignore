@@ -30,3 +30,4 @@ TIMES.md
 # benchmark outputs are committed
 !benchmarks/figures/*.png
 !benchmarks/figures/*.json
+benchmarks/mumax3/runs/

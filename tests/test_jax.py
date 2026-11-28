@@ -21,10 +21,10 @@ def _m(n, seed=0):
 
 
 @pytest.mark.parametrize("D", [0.0, 2e-3])
-@pytest.mark.parametrize("n", [(12, 7, 1), (6, 5, 3), (1, 1, 1)])
+@pytest.mark.parametrize("n", [(12, 7, 1), (6, 5, 3), (1, 1, 1), (5, 1, 3), (1, 1, 6)])
 def test_field_matches_numba(n, D):
     m = _m(n)
-    if n[0] > 2:
+    if n[0] > 3 and n[1] > 2:
         m[0, 0] = m[3, 2] = 0.0  # empty cells: DMI bonds to them are missing
     ref = h_eff(A, MS, K, (0.3, 0, 1), m, None, compute_demag_tensor(n, DX), n, DX, D=D)
     got = np.asarray(mj.make_field(n, DX, MS, A, K, (0.3, 0, 1), D=D)(m))
