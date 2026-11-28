@@ -1,7 +1,7 @@
 # mumax3 built from source against CUDA 13 (multi-arch: amd64 and arm64, e.g. DGX Spark / GB10).
 #
-#   docker build -t micromagpy/mumax3 benchmarks/mumax3
-#   docker run --rm --gpus all -v $PWD:/work -w /work micromagpy/mumax3 mumax3 sp4.mx3
+#   docker build -t lemurpwned/mumax3:3.12-cuda13 benchmarks/mumax3
+#   docker run --rm --gpus all -v $PWD:/work -w /work lemurpwned/mumax3:3.12-cuda13 mumax3 sp4.mx3
 #
 # CUDA 13 changed cuCtxCreate (extra CUctxCreateParams argument); the sed below passes nil.
 ARG CUDA=13.0.0

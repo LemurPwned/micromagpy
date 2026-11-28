@@ -32,7 +32,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 OUT = os.path.join(ROOT, "benchmarks", "figures")
 WORK = os.path.join(ROOT, "benchmarks", "mumax3", "runs")
-IMAGE = os.environ.get("MUMAX_IMAGE", "micromagpy/mumax3:cuda13")
+IMAGE = os.environ.get("MUMAX_IMAGE", "lemurpwned/mumax3:3.12-cuda13")
 
 import jax  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
